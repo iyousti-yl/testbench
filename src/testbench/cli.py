@@ -80,7 +80,10 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 def _run(args: argparse.Namespace, mode: str) -> int:
     config = load_config()
-    result = Runner(config).run_suite(args.suite, mode=mode, tags=args.tag)
+    result = Runner(config).run_suite(args.suite, mode=mode, tags=args.tag, scenarios=args.scenario)
+    if not result.scenarios:
+        print("error: no scenario matches the filters", file=sys.stderr)
+        return 2
     run_dir = save_run(result, config.output_dir)
     report = write_report(result, run_dir)
     print(console_summary(result))
@@ -132,6 +135,9 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name, help=text)
         p.add_argument("suite")
         p.add_argument("--tag", action="append", help="only scenarios with this tag")
+        p.add_argument(
+            "--scenario", action="append", help="only this scenario (file name without extension)"
+        )
         p.set_defaults(func=lambda a, m=mode: _run(a, m))
 
     p = sub.add_parser("demo", help="break or fix the demo data to see failures")

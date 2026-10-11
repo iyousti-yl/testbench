@@ -14,6 +14,10 @@ Business-scenario regression testing for SAP data landscapes. Datasphere is the 
 - **Sensitive connections store baselines in hash mode** so personal data is not persisted.
 - Keep runtime dependencies minimal. Database drivers are optional extras (for example `pip install testbench[datasphere]`).
 
+## Skills
+
+- `write-scenario`: turn a business requirement into a scenario file, validate it and dry-run it. Use it whenever someone describes something they want tested.
+
 ## Development flow
 
 - `main` always works. Every change goes through a branch and a pull request; CI (ruff + pytest) must be green before merge.
