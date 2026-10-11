@@ -161,6 +161,10 @@ class Store:
             raise StoreError(f"workspace {slug} already exists") from exc
         return Workspace(id=cur.lastrowid, slug=slug, name=name.strip(), is_demo=is_demo)
 
+    def has_workspaces(self) -> bool:
+        with self._db() as db:
+            return db.execute("SELECT 1 FROM workspaces LIMIT 1").fetchone() is not None
+
     def add_member(self, workspace_slug: str, email: str, role: str = "member") -> None:
         if role not in ROLES:
             raise StoreError(f"role must be one of {', '.join(ROLES)}")

@@ -69,6 +69,8 @@ testbench web serve --insecure-cookies     # http://127.0.0.1:8000 (plain HTTP: 
 
 Other admin commands: `testbench web create-user`, `create-workspace [--demo]`, `add-member`, `set-secret`. Keep `TESTBENCH_SECRET_KEY` safe and stable: it signs sessions and encrypts stored connection secrets.
 
+A hosted demo can run on Render's free plan: see [docs/deploy.md](docs/deploy.md).
+
 ## From business requirement to test
 
 Describe what you want tested in plain language to Claude Code in this repository, for example *"Every employee with a contract in a month must appear in the payroll export for that month"*. The `write-scenario` skill finds the real tables and columns, writes a scenario that follows the schema, validates it, dry-runs it and explains each check so you can review it.

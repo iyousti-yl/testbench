@@ -72,7 +72,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if args.insecure_cookies:
         print("warning: cookies are sent over plain HTTP; use this only on your own machine")
     app = create_app(data_dir, key, secure_cookies=not args.insecure_cookies)
-    uvicorn.run(app, host=args.host, port=args.port, proxy_headers=True)
+    port = args.port or int(os.environ.get("PORT", "8000"))
+    uvicorn.run(app, host=args.host, port=port, proxy_headers=True)
     return 0
 
 
@@ -101,21 +102,37 @@ def cmd_set_secret(args: argparse.Namespace) -> int:
     return 0
 
 
+DEMO_ACCOUNTS = [
+    # email, name, workspace, environment variable that may hold the password
+    ("consultant@nmbs-demo.test", "NMBS consultant", "nmbs-demo", "TESTBENCH_DEMO_PASSWORD_NMBS"),
+    (
+        "consultant@other-demo.test",
+        "Other client consultant",
+        "other-client-demo",
+        "TESTBENCH_DEMO_PASSWORD_OTHER",
+    ),
+]
+
+
 def cmd_seed_demo(args: argparse.Namespace) -> int:
-    """Two demo workspaces and two users, to show that each user only sees their own."""
+    """Two demo workspaces and two users, to show that each user only sees their own.
+
+    Passwords come from TESTBENCH_DEMO_PASSWORD_NMBS / _OTHER when set (hosted demo), and are
+    otherwise generated and printed once.
+    """
     store = _store()
+    if args.if_empty and store.has_workspaces():
+        print("Demo already seeded.")
+        return 0
     create_workspace(store, "nmbs-demo", "NMBS · HR integration (demo data)", with_demo=True)
     create_workspace(store, "other-client-demo", "Other client (demo data)", with_demo=True)
-    accounts = [
-        ("consultant@nmbs-demo.test", "NMBS consultant", "nmbs-demo"),
-        ("consultant@other-demo.test", "Other client consultant", "other-client-demo"),
-    ]
-    print("Demo accounts (passwords are shown once):")
-    for email, name, slug in accounts:
-        password = secrets.token_urlsafe(12)
+    print("Demo accounts:")
+    for email, name, slug, env_var in DEMO_ACCOUNTS:
+        password = os.environ.get(env_var) or secrets.token_urlsafe(12)
         store.create_user(email, name, password)
         store.add_member(slug, email, "owner")
-        print(f"  {email}  {password}  -> {slug}")
+        shown = f"password from {env_var}" if os.environ.get(env_var) else password
+        print(f"  {email}  {shown}  -> {slug}")
     return 0
 
 
@@ -125,7 +142,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
 
     p = web_sub.add_parser("serve", help="start the web app")
     p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--port", type=int, help="default: $PORT or 8000")
     p.add_argument(
         "--insecure-cookies", action="store_true", help="allow plain HTTP (local use only)"
     )
@@ -155,4 +172,5 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_set_secret)
 
     p = web_sub.add_parser("seed-demo", help="create the NMBS demo and a second workspace")
+    p.add_argument("--if-empty", action="store_true", help="do nothing if workspaces exist")
     p.set_defaults(func=cmd_seed_demo)

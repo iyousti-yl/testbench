@@ -1,0 +1,19 @@
+# Hosted demo on Render (free plan). Synthetic data only: never connect a client system here.
+# The free plan sleeps after inactivity and has no persistent disk, so the demo is
+# re-seeded on every start and earlier runs disappear.
+services:
+  - type: web
+    name: testbench-demo
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: feat/hosted-demo   # switch to main once the open pull requests are merged
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: TESTBENCH_SECRET_KEY
+        generateValue: true
+      - key: TESTBENCH_DEMO_PASSWORD_NMBS
+        generateValue: true
+      - key: TESTBENCH_DEMO_PASSWORD_OTHER
+        generateValue: true
