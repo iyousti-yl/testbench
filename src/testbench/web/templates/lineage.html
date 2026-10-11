@@ -1,83 +1,109 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
+{% set base = "/w/" ~ workspace.slug %}
+{% set change_style = {"added": ("positive", "plus", "Added"), "changed": ("critical", "pencil", "Changed"), "removed": ("negative", "trash", "Removed")} %}
 {% block title %}Lineage · {{ view.connection.name }} · Testbench{% endblock %}
+{% block crumbs %}{{ m.crumbs([(workspace.name, base), ("Lineage of " ~ view.connection.name, "")]) }}{% endblock %}
 {% block content %}
-<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a> / Lineage</nav>
-<div class="row">
+<div class="page-head">
   <div>
-    <h1>Lineage of {{ view.connection.name }} <span class="muted type">{{ view.title }}</span></h1>
-    {% if snapshot %}<p class="muted lead">{{ snapshot.scope | join(", ") }} · captured {{ snapshot.captured_at | when }} · {{ snapshot.graph.objects.values() | rejectattr("kind", "equalto", "external") | list | length }} objects · {{ snapshot.graph.edges | length }} dependencies</p>{% endif %}
+    <h1>Lineage of {{ view.connection.name }}</h1>
+    <div class="meta">
+      <span class="with-icon">{{ icon(view.icon) }}{{ view.title }}</span>
+      {% if snapshot %}
+      <span>{{ snapshot.scope | join(", ") }}</span>
+      <span>{{ snapshot.graph.objects.values() | rejectattr("kind", "equalto", "external") | list | length }} objects, {{ snapshot.graph.edges | length }} dependencies</span>
+      <span class="with-icon">{{ icon("clock") }}{{ snapshot.captured_at | when }}</span>
+      {% endif %}
+    </div>
   </div>
-  <form method="post" action="/w/{{ workspace.slug }}/connections/{{ view.connection.id }}/lineage">
+  <form class="inline" method="post" action="{{ base }}/connections/{{ view.connection.id }}/lineage">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button type="submit">{{ "Update lineage" if snapshot else "Map lineage" }}</button>
+    <button class="btn primary" type="submit">{{ icon("lineage") }}{{ "Update lineage" if snapshot else "Map lineage" }}</button>
   </form>
 </div>
 
 {% if not snapshot %}
-<section class="card"><p class="muted">No lineage yet. Map it to see every object of this connection and which object reads which.</p></section>
+<section class="panel empty">
+  <span class="empty-mark">{{ icon("lineage") }}</span>
+  <h2>No lineage yet</h2>
+  <p>Map it to see every view and table of this connection and which object reads which. Each update lists what changed since the previous one.</p>
+</section>
 {% else %}
-<section class="card">
-  <h2>Changes</h2>
+<div class="stack">
+<section class="panel" aria-labelledby="changes-title">
+  <div class="toolbar"><h2 id="changes-title">Changes</h2></div>
   {% if diff.first %}
-  <p class="muted">This is the first lineage of this connection. The next one lists every object that was added, changed or removed since now.</p>
+  <p class="panel-body muted">This is the first lineage of this connection. The next update lists every object that was added, changed or removed since now.</p>
   {% elif not diff.changes and not diff.edges_added and not diff.edges_removed %}
-  <p>Nothing changed since {{ diff.previous.captured_at | when }}.</p>
+  <p class="panel-body">Nothing changed since {{ diff.previous.captured_at | when }}.</p>
   {% else %}
-  <p class="muted">Since {{ diff.previous.captured_at | when }}: {% for status, n in diff.counts() %}{{ n }} {{ status }}{% if not loop.last %}, {% endif %}{% else %}only dependencies changed{% endfor %}{% if diff.scenarios() %}. {{ diff.scenarios() | length }} {{ "scenario reads" if diff.scenarios() | length == 1 else "scenarios read" }} the affected objects: re-run {{ "it" if diff.scenarios() | length == 1 else "them" }}{% endif %}.</p>
-  <table>
-    <thead><tr><th>Object</th><th>Change</th><th>What changed</th><th>Impacts</th><th>Scenarios to re-run</th></tr></thead>
-    <tbody>
-    {% for c in diff.changes %}
-    <tr>
-      <td><strong>{{ c.key }}</strong><br><span class="muted small">{{ c.kind }}</span></td>
-      <td><span class="badge {{ {'added': 'passed', 'changed': 'error', 'removed': 'failed'}[c.status] }}">{{ c.status | capitalize }}</span></td>
-      <td>{{ c.details | join("; ") }}</td>
-      <td>{{ c.impacted | join(", ") or "Nothing reads it" }}</td>
-      <td>{% for s in c.scenarios %}{% set parts = s.split("/") %}<a href="/w/{{ workspace.slug }}/suites/{{ parts[0] }}/scenarios/{{ parts[1] }}">{{ s }}</a>{% if not loop.last %}, {% endif %}{% else %}<span class="muted">None</span>{% endfor %}</td>
-    </tr>
-    {% if c.definition_diff %}
-    <tr class="sub"><td colspan="5"><details><summary>Definition of {{ c.key }}: what changed</summary><pre class="diff">{% for line in c.definition_diff.splitlines() %}<span class="{{ 'add' if line.startswith('+') and not line.startswith('+++') else 'del' if line.startswith('-') and not line.startswith('---') else 'hunk' if line.startswith('@@') else '' }}">{{ line }}</span>
+  <p class="panel-body">Since {{ diff.previous.captured_at | when }}: {% for status, n in diff.counts() %}{{ n }} {{ status }}{% if not loop.last %}, {% endif %}{% else %}only dependencies changed{% endfor %}{% if diff.scenarios() %}. {{ diff.scenarios() | length }} {{ "scenario reads" if diff.scenarios() | length == 1 else "scenarios read" }} the affected objects: re-run {{ "it" if diff.scenarios() | length == 1 else "them" }}{% endif %}.</p>
+  {% if diff.changes %}
+  <div class="scroll-x">
+    <table class="table">
+      <thead><tr><th>Object</th><th>Change</th><th>What changed</th><th>Impacts</th><th>Scenarios to re-run</th></tr></thead>
+      <tbody>
+      {% for c in diff.changes %}
+      {% set tone, glyph, label = change_style[c.status] %}
+      <tr>
+        <td><strong>{{ c.key }}</strong><br><span class="muted">{{ c.kind }}</span></td>
+        <td><span class="status {{ tone }}">{{ icon(glyph) }}{{ label }}</span></td>
+        <td>{{ c.details | join("; ") }}</td>
+        <td>{{ c.impacted | join(", ") or "Nothing reads it" }}</td>
+        <td>{% for s in c.scenarios %}{% set parts = s.split("/") %}<a href="{{ base }}/suites/{{ parts[0] }}/scenarios/{{ parts[1] }}">{{ s }}</a>{% if not loop.last %}, {% endif %}{% else %}<span class="muted">None</span>{% endfor %}</td>
+      </tr>
+      {% if c.definition_diff %}
+      <tr class="sub"><td colspan="5"><details class="disclosure"><summary>{{ icon("chevron-right") }}Definition of {{ c.key }}: what changed</summary><pre class="diff disclosure-body">{% for line in c.definition_diff.splitlines() %}<span class="{{ 'add' if line.startswith('+') and not line.startswith('+++') else 'del' if line.startswith('-') and not line.startswith('---') else 'hunk' if line.startswith('@@') else '' }}">{{ line }}</span>
 {% endfor %}</pre></details></td></tr>
-    {% endif %}
-    {% endfor %}
-    </tbody>
-  </table>
+      {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
   {% if diff.edges_added or diff.edges_removed %}
-  <h3 class="spaced">Dependencies</h3>
-  <ul class="plain">
-    {% for e in diff.edges_added %}<li><span class="badge passed">New</span> {{ e.target }} reads {{ e.source }}</li>{% endfor %}
-    {% for e in diff.edges_removed %}<li><span class="badge failed">Gone</span> {{ e.target }} no longer reads {{ e.source }}</li>{% endfor %}
-  </ul>
+  <div class="panel-body">
+    <h3>Dependencies</h3>
+    <ul class="plain-list">
+      {% for e in diff.edges_added %}<li><span class="status positive">{{ icon("plus") }}New</span> {{ e.target }} reads {{ e.source }}</li>{% endfor %}
+      {% for e in diff.edges_removed %}<li><span class="status negative">{{ icon("trash") }}Gone</span> {{ e.target }} no longer reads {{ e.source }}</li>{% endfor %}
+    </ul>
+  </div>
   {% endif %}
   {% endif %}
 </section>
 
-<section class="card">
-  <h2>Objects</h2>
-  <table>
-    <thead><tr><th>Object</th><th>Type</th><th>Columns</th><th>Reads from</th><th>Used by</th></tr></thead>
-    <tbody>
-    {% for key, o in snapshot.graph.objects | dictsort %}
-    <tr>
-      <td>{{ o.name }}<br><span class="muted small">{{ o.schema }}</span></td>
-      <td>{{ o.kind }}</td>
-      <td>{{ o.columns | length or "" }}</td>
-      <td>{{ snapshot.graph.upstream(key) | join(", ") }}</td>
-      <td>{{ snapshot.graph.downstream(key) | join(", ") }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+<section class="panel" aria-labelledby="objects-title">
+  <div class="toolbar"><h2 id="objects-title">Objects <span class="count">({{ snapshot.graph.objects | length }})</span></h2></div>
+  <div class="scroll-x">
+    <table class="table">
+      <thead><tr><th>Object</th><th>Type</th><th class="num">Columns</th><th>Reads from</th><th>Used by</th></tr></thead>
+      <tbody>
+      {% for key, o in snapshot.graph.objects | dictsort %}
+      <tr>
+        <td><strong>{{ o.name }}</strong><br><span class="muted">{{ o.schema }}</span></td>
+        <td>{{ o.kind }}</td>
+        <td class="num">{{ o.columns | length or "" }}</td>
+        <td>{{ snapshot.graph.upstream(key) | join(", ") }}</td>
+        <td>{{ snapshot.graph.downstream(key) | join(", ") }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 
 {% if history | length > 1 %}
-<section class="card">
-  <h2>Earlier lineages</h2>
-  <ul class="plain">
-    {% for id in history %}<li>{% if id == snapshot.id %}{{ id | snapshot_when }} (shown){% else %}<a href="/w/{{ workspace.slug }}/lineage/{{ view.connection.name }}?snapshot={{ id }}">{{ id | snapshot_when }}</a>{% endif %}</li>{% endfor %}
+<section class="panel" aria-labelledby="history-title">
+  <div class="toolbar"><h2 id="history-title">Earlier lineages</h2></div>
+  <ul class="list">
+    {% for id in history %}
+    <li>{% if id == snapshot.id %}<span class="row-link current">{{ icon("clock") }}<span class="row-text">{{ id | snapshot_when }}</span><span class="muted small">Shown</span></span>{% else %}<a class="row-link" href="{{ base }}/lineage/{{ view.connection.name }}?snapshot={{ id }}">{{ icon("clock") }}<span class="row-text">{{ id | snapshot_when }}</span>{{ icon("chevron-right", cls="chev") }}</a>{% endif %}</li>
+    {% endfor %}
   </ul>
 </section>
 {% endif %}
+</div>
 {% endif %}
 {% endblock %}

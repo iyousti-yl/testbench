@@ -1,7 +1,11 @@
 {% extends "base.html" %}
+{% block title %}{{ message }} · Testbench{% endblock %}
+{% block page_class %} narrow{% endblock %}
 {% block content %}
-<section class="card narrow">
-  <h1>{{ message }}</h1>
-  <p><a href="/">Back to your workspaces</a></p>
+<section class="panel empty">
+  <span class="empty-mark">{{ icon("info") }}</span>
+  <h1 class="h2">{{ message }}</h1>
+  <p>Check the address, or go back to the workspaces you can open.</p>
+  <a class="btn" href="/">Your workspaces</a>
 </section>
 {% endblock %}

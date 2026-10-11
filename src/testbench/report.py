@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -83,35 +84,56 @@ def _details(details: dict[str, Any]) -> str:
 
 
 _CSS = """
-:root{--bg:#f5f6f7;--card:#fff;--text:#1d2d3e;--muted:#556b82;--border:#d9d9d9;
---brand:#0070f2;--ok:#256f3a;--ok-bg:#f5fae5;--bad:#aa0808;--bad-bg:#ffeaf4;
---warn:#e76500;--warn-bg:#fff8d6;--skip:#5b738b;--skip-bg:#eff1f2}
-@media (prefers-color-scheme:dark){:root{--bg:#12171c;--card:#1d232a;--text:#eaecee;
---muted:#a9b4be;--border:#3a434c;--brand:#4db1ff;--ok:#6dd58c;--ok-bg:#1d3324;
---bad:#ff8888;--bad-bg:#3d1c22;--warn:#ffab4d;--warn-bg:#3b2d16;--skip:#a9b4be;--skip-bg:#2a3138}}
+:root{color-scheme:light;--bg:#f4f6f8;--card:#fff;--sunk:#edf0f4;--text:#14202d;--muted:#4c5d6e;
+--border:#dce0e5;--brand:#3056cd;--ok:#21763c;--ok-bg:#e4fbe7;--bad:#b32228;--bad-bg:#ffedec;
+--warn:#a75000;--warn-bg:#fff3d8;--skip:#576574;--skip-bg:#ebeff2;--seg-passed:#3ca059;
+--seg-failed:#d42f34;--seg-error:#ea942f;--seg-skipped:#b7bfc7;
+--shadow:0 1px 2px rgba(20,32,45,.1),0 2px 6px rgba(20,32,45,.06)}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#11171d;--card:#1a2129;
+--sunk:#141a21;--text:#e7ecf0;--muted:#a6b3c1;--border:#2e363f;--brand:#84a8fd;--ok:#6fd087;
+--ok-bg:#1a3520;--bad:#fb817f;--bad-bg:#4a2322;--warn:#eeb154;--warn-bg:#402c12;--skip:#a6b3c1;
+--skip-bg:#282f35;--seg-passed:#4cb86a;--seg-failed:#ed5350;--seg-error:#f0a646;
+--seg-skipped:#555f69;--shadow:none}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);
-font:14px/1.5 "72","Segoe UI",system-ui,sans-serif}
-header{background:var(--card);border-bottom:1px solid var(--border);padding:16px 24px}
-header h1{margin:0;font-size:20px}header p{margin:4px 0 0;color:var(--muted)}
-main{max-width:1100px;margin:0 auto;padding:24px 16px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
-.tile{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px}
-.tile b{display:block;font-size:28px;background:none}.tile span{color:var(--muted)}
-details{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:12px}
-summary{cursor:pointer;padding:12px 16px;display:flex;gap:12px;align-items:center;list-style:none}
-summary::-webkit-details-marker{display:none}
-.body{padding:0 16px 16px}.muted{color:var(--muted)}
-.badge{border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}
+font:15px/1.5 "Source Sans 3","Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+header{padding:20px 24px 4px;max-width:1100px;margin:0 auto}
+header h1{margin:0;font-size:22px;line-height:1.25}header p{margin:4px 0 0;color:var(--muted)}
+main{max-width:1100px;margin:0 auto;padding:12px 24px 32px}
+.strip{display:flex;gap:2px;height:6px;border-radius:3px;overflow:hidden;margin:12px 0 0;
+max-width:320px}
+.seg{flex:1 1 0;background:var(--seg-skipped)}.seg.passed{background:var(--seg-passed)}
+.seg.failed{background:var(--seg-failed)}.seg.error{background:var(--seg-error)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px}
+.tile{background:var(--card);border-radius:12px;padding:12px 16px;box-shadow:var(--shadow);
+border:1px solid transparent}.tile b{display:block;font-size:26px;line-height:1.2;background:none}
+.tile span{color:var(--muted);font-size:14px}
+details{background:var(--card);border-radius:12px;margin-bottom:12px;box-shadow:var(--shadow);
+border:1px solid transparent}
+@media (prefers-color-scheme:dark){.tile,details{border-color:var(--border)}}
+summary{cursor:pointer;padding:12px 20px;display:flex;gap:12px;align-items:center;list-style:none}
+summary::-webkit-details-marker{display:none}summary:hover{background:var(--sunk);border-radius:12px}
+.body{padding:0 20px 16px}.muted{color:var(--muted)}
+.badge{border-radius:4px;padding:1px 8px;font-size:13px;font-weight:600;white-space:nowrap}
+b.passed,b.failed,b.error,b.skipped{background:none}
 .passed{color:var(--ok);background:var(--ok-bg)}.failed{color:var(--bad);background:var(--bad-bg)}
 .error{color:var(--warn);background:var(--warn-bg)}.skipped{color:var(--skip);background:var(--skip-bg)}
-.req{border-left:3px solid var(--brand);padding:4px 12px;margin:8px 0}
+p.error{background:none;color:var(--bad)}
+.req{background:var(--sunk);border-radius:8px;padding:8px 12px;margin:4px 0 8px;font-size:16px}
 .check{border-top:1px solid var(--border);padding-top:8px;margin-top:8px}
-.check h4{margin:4px 0;display:flex;gap:8px;align-items:center;font-size:14px}
-h5{margin:12px 0 4px;font-size:13px}.scroll{overflow-x:auto}
+.check h4{margin:4px 0;display:flex;gap:8px;align-items:center;font-size:15px}
+h5{margin:12px 0 4px;font-size:14px}.scroll{overflow-x:auto}
 table{border-collapse:collapse;font-size:13px;min-width:50%}
-th,td{border:1px solid var(--border);padding:4px 8px;text-align:left}th{background:var(--bg)}
-ul{margin:4px 0;padding-left:20px}
+th,td{border-bottom:1px solid var(--border);padding:6px 10px;text-align:left}
+th{color:var(--muted);font-weight:600;background:var(--sunk)}
+ul{margin:4px 0;padding-left:20px}li{margin:2px 0}
 """
+
+
+def _when(value: str) -> str:
+    try:
+        return datetime.fromisoformat(value).strftime("%d %b %Y, %H:%M UTC")
+    except (TypeError, ValueError):
+        return _e(value)
 
 
 def html_report(result: RunResult) -> str:
@@ -120,6 +142,8 @@ def html_report(result: RunResult) -> str:
         f"<div class='tile'><b class='{k}'>{v}</b><span>{_LABELS[k]}</span></div>"
         for k, v in counts.items()
     )
+    kind = "Baseline" if result.mode == "baseline" else "Test run"
+    strip = "".join(f"<span class='seg {s.status}'></span>" for s in result.scenarios)
     sections = []
     for s in result.scenarios:
         checks_html = []
@@ -154,8 +178,9 @@ def html_report(result: RunResult) -> str:
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{_e(result.suite)} test report</title><style>{_CSS}</style></head><body>"
         f"<header><h1>{_e(result.project)} · {_e(result.suite)}</h1>"
-        f"<p>{_LABELS.get(result.status, result.status)} · started {_e(result.started_at)}"
-        f" · finished {_e(result.finished_at)}</p></header>"
+        f"<p>{kind} · {_LABELS.get(result.status, result.status)} · {_when(result.started_at)}</p>"
+        f"<div class='strip' role='img' aria-label='Result of each scenario'>{strip}</div>"
+        "</header>"
         f"<main><div class='tiles'>{tiles}</div>{''.join(sections)}</main></body></html>"
     )
 

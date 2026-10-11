@@ -1,11 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Run · {{ workspace.name }} · Testbench{% endblock %}
+{% import "_macros.html" as m %}
+{% set base = "/w/" ~ workspace.slug %}
+{% set kind = "Baseline" if result.mode == "baseline" else "Test run" %}
+{% block title %}{{ kind }} {{ result.suite }} · Testbench{% endblock %}
+{% block crumbs %}{{ m.crumbs([(workspace.name, base), (kind ~ " " ~ result.suite, "")]) }}{% endblock %}
 {% block content %}
-<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a> / Run</nav>
-<div class="row">
-  <h1>{{ result.suite }} · {{ "Baseline" if result.mode == "baseline" else "Test run" }}</h1>
-  <span class="badge large {{ result.status }}">{{ status_label[result.status] }}</span>
+<div class="page-head">
+  <div>
+    <h1>{{ kind }} · {{ result.suite }}</h1>
+    <div class="meta">
+      {{ m.status(result.status, large=True) }}
+      <span class="with-icon">{{ icon("clock") }}{{ result.started_at | when }}</span>
+    </div>
+  </div>
+  <a class="btn ghost" href="/w/{{ workspace.slug }}/runs/{{ run_id }}/report" target="_blank" rel="noopener">{{ icon("external") }}Open report</a>
 </div>
-<p class="muted">Started {{ result.started_at | when }}</p>
-<iframe class="report" src="/w/{{ workspace.slug }}/runs/{{ run_id }}/report" sandbox title="Test report"></iframe>
+<iframe class="report" src="/w/{{ workspace.slug }}/runs/{{ run_id }}/report?embed=1" sandbox title="Test report"></iframe>
 {% endblock %}

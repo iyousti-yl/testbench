@@ -125,8 +125,10 @@ Data security is a top priority: clients will connect HR and finance data. The r
 
 A FastAPI app with server-rendered pages and no JavaScript (`testbench web serve`).
 
+- **Look and feel:** compatible with SAP's cloud apps (Fiori Horizon, SAP Analytics Cloud, Datasphere) in structure, with its own type, colour and icons; see [DESIGN.md](../DESIGN.md) for tokens and rules and [PRODUCT.md](../PRODUCT.md) for who it is for. Every scenario shows its latest test run result, and each suite and workspace shows a health strip with one segment per scenario.
+
 - **Data layout:** `TESTBENCH_DATA_DIR/app.db` holds users, workspaces, memberships, connections and their encrypted secrets (schema versioned with `PRAGMA user_version`). Each workspace has its own folder (`workspaces/<id>/`) with `suites/` and `.testbench/` (baselines and runs); the runner gets its connections from the database, so the engine runs unchanged.
-- **Workspaces:** any signed-in user can create one and becomes its owner. The id in links is derived from the name once and never changes on rename, and an id whose folder still exists on disk is never reused. Deleting asks to type the id, removes the folder first and then the database rows, so no data is left behind for a later workspace.
+- **Workspaces:** any signed-in user can create one and becomes its owner. The id in links is derived from the name once and never changes on rename, and an id whose folder still exists on disk is never reused. Rename and delete live on the workspace's Settings page; deleting asks to type the id, removes the folder first and then the database rows, so no data is left behind for a later workspace.
 - **Roles:** members can open a workspace, write and run scenarios and test connections. Only owners rename or delete the workspace and add, edit or delete connections (403 for members).
 - **Scenario editor:** create, edit and delete scenarios in the app. A scenario stays a file in the workspace folder (`suites/<suite>/<id>.yaml`), so the engine, the command line and the skill share it. Every save is checked against the scenario schema, unique check names, the workspace's connections and (for `select`) a SQL connection before anything is written; files are replaced atomically under the workspace lock. The file name is derived from the title once and never changes; deleting a scenario also deletes its baselines, a new scenario never inherits baselines left under its name, and a suite whose last scenario is deleted is removed. A suite or a single scenario can be run or baselined from the app.
 - **Access control:** every workspace route resolves the workspace with a query that joins the signed-in user's memberships, and every connection lookup is scoped to that workspace. A workspace the user is not a member of answers 404, exactly like one that does not exist.
@@ -160,6 +162,7 @@ The exit code makes it usable in CI or after a transport.
 5. Datasphere and SuccessFactors connectors. (built and tested against simulated systems; still to verify on a real tenant)
 6. Create, edit and delete test scenarios in the app. (done)
 7. Lineage of the tenant's objects, with change detection between runs. (database metadata done and tested against a simulated catalog; the Datasphere repository API is next)
+8. Visual identity and simpler create, edit and delete flows in the app. (done)
 
 ## Open questions
 

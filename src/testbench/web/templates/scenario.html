@@ -1,41 +1,80 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% set base = "/w/" ~ workspace.slug %}
+{% set here = base ~ "/suites/" ~ suite ~ "/scenarios/" ~ scenario.id %}
 {% block title %}{{ scenario.name }} · Testbench{% endblock %}
+{% block crumbs %}{{ m.crumbs([(workspace.name, base), (suite, base), (scenario.name, "")]) }}{% endblock %}
 {% block content %}
-<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a> / {{ suite }}</nav>
-<div class="row">
-  <h1>{{ scenario.name }}</h1>
-  <div class="actions">
-    <form method="post" action="/w/{{ workspace.slug }}/suites/{{ suite }}/run">
+<div class="page-head">
+  <div>
+    <h1>{{ scenario.name }}</h1>
+    <div class="meta">
+      {% if run_id %}<a class="status-link" href="{{ base }}/runs/{{ run_id }}">{{ m.status(status) }}<span>latest run</span></a>{% else %}{{ m.status(none) }}{% endif %}
+      <span>Suite {{ suite }}</span>
+      <span class="with-icon">{{ icon("plug") }}{{ scenario.connection }}</span>
+    </div>
+  </div>
+  <div class="btn-row">
+    <a class="btn ghost" href="{{ here }}/edit">{{ icon("pencil") }}Edit</a>
+    {% if has_regression %}
+    <form class="inline" method="post" action="{{ base }}/suites/{{ suite }}/run">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="scenario" value="{{ scenario.id }}">
       <input type="hidden" name="mode" value="baseline">
-      <button class="secondary" type="submit">Capture baseline</button>
+      <button class="btn" type="submit" title="Store today's result as the expected state">{{ icon("baseline") }}Capture baseline</button>
     </form>
-    <form method="post" action="/w/{{ workspace.slug }}/suites/{{ suite }}/run">
+    {% endif %}
+    <form class="inline" method="post" action="{{ base }}/suites/{{ suite }}/run">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="scenario" value="{{ scenario.id }}">
       <input type="hidden" name="mode" value="run">
-      <button type="submit">Run this scenario</button>
+      <button class="btn primary" type="submit">{{ icon("play") }}Run this scenario</button>
     </form>
   </div>
 </div>
-{% if scenario.requirement %}
-<section class="card">
-  <h2>Business requirement</h2>
-  <p class="requirement">{{ scenario.requirement }}</p>
-  {% if scenario.description %}<p class="muted">{{ scenario.description }}</p>{% endif %}
-  {% for t in scenario.tags %}<span class="tag">{{ t }}</span>{% endfor %}
-</section>
-{% endif %}
-<section class="card">
-  <div class="row">
-    <h2>Test logic</h2>
-    <div class="actions">
-      <a class="button secondary" href="/w/{{ workspace.slug }}/suites/{{ suite }}/scenarios/{{ scenario.id }}/edit">Edit</a>
-      <a class="button danger" href="/w/{{ workspace.slug }}/suites/{{ suite }}/scenarios/{{ scenario.id }}/delete">Delete</a>
+
+<div class="stack">
+  {% if scenario.requirement %}
+  <section class="panel" aria-labelledby="req-title">
+    <div class="panel-body stack-sm">
+      <h2 id="req-title" class="label-head">Business requirement</h2>
+      <p class="requirement">{{ scenario.requirement }}</p>
+      {% if scenario.description %}<p class="muted">{{ scenario.description }}</p>{% endif %}
+      {% if scenario.tags %}<div class="tags">{% for t in scenario.tags %}<span class="tag">{{ t }}</span>{% endfor %}</div>{% endif %}
     </div>
-  </div>
-  <p class="muted">Connection: {{ scenario.connection }} · {{ scenario.checks | length }} {{ "check" if scenario.checks | length == 1 else "checks" }}{% if scenario.select %} · runs on the records that match the selection{% endif %}</p>
-  <pre>{{ source }}</pre>
-</section>
+  </section>
+  {% endif %}
+
+  <section class="panel" aria-labelledby="checks-title">
+    <div class="toolbar"><h2 id="checks-title">Checks <span class="count">({{ scenario.checks | length }})</span></h2></div>
+    {% if scenario.select %}
+    <div class="check-item">
+      <div class="check-head"><h3>Records to test</h3><span class="muted small">Checks run on the records this query finds</span></div>
+      <pre>{{ scenario.select }}</pre>
+    </div>
+    {% endif %}
+    <ol class="check-list">
+      {% for c in scenario.checks %}
+      <li class="check-item">
+        <div class="check-head">
+          <h3>{{ c.name }}</h3>
+          {% if c.connection and c.connection != scenario.connection %}<span class="muted small with-icon">{{ icon("plug") }}{{ c.connection }}</span>{% endif %}
+        </div>
+        <ul class="expect" aria-label="Expected">
+          {% for key, spec in c.expect.items() %}<li>{{ icon("check") }}<span>{{ describe(key, spec) }}</span></li>{% endfor %}
+        </ul>
+        <details class="disclosure">
+          <summary>{{ icon("chevron-right") }}Query</summary>
+          <pre class="disclosure-body">{{ c.query }}</pre>
+        </details>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <details class="disclosure">
+    <summary>{{ icon("chevron-right") }}Scenario file (YAML)</summary>
+    <pre class="disclosure-body">{{ source }}</pre>
+  </details>
+</div>
 {% endblock %}

@@ -1,82 +1,122 @@
 {% extends "base.html" %}
-{% block title %}{{ "Edit scenario" if scenario_id else "New scenario" }} · Testbench{% endblock %}
+{% import "_macros.html" as m %}
+{% set base = "/w/" ~ workspace.slug %}
+{% set here = base ~ "/suites/" ~ form.suite ~ "/scenarios/" ~ scenario_id %}
+{% block title %}{{ "Edit " ~ form.title if scenario_id else "New scenario" }} · Testbench{% endblock %}
+{% block crumbs %}{% if scenario_id %}{{ m.crumbs([(workspace.name, base), (form.title or scenario_id, here), ("Edit", "")]) }}{% else %}{{ m.crumbs([(workspace.name, base), ("New scenario", "")]) }}{% endif %}{% endblock %}
+{% block page_class %} medium{% endblock %}
 {% block content %}
-<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a>{% if scenario_id %} / <a href="/w/{{ workspace.slug }}/suites/{{ form.suite }}/scenarios/{{ scenario_id }}">{{ form.title }}</a>{% endif %}</nav>
-<section class="card form-card wide">
-  <h1>{{ "Edit scenario" if scenario_id else "New test scenario" }}</h1>
-  {% if errors %}
-  <div class="flash error">
-    <strong>The scenario was not saved.</strong>
-    <ul class="errors">{% for e in errors %}{% if e.strip() %}<li>{{ e.strip().lstrip("- ") }}</li>{% endif %}{% endfor %}</ul>
+<div class="page-head">
+  <div>
+    <h1>{{ "Edit scenario" if scenario_id else "New scenario" }}</h1>
+    {% if scenario_id %}<p class="subtitle">Suite {{ form.suite }}</p>{% else %}<p class="subtitle">Describe what the business expects, then the checks that prove it.</p>{% endif %}
   </div>
-  {% endif %}
-  {% if not connections %}
-  <div class="flash error">This workspace has no connections yet. {% if workspace.is_owner %}<a href="/w/{{ workspace.slug }}">Add a connection</a> first.{% else %}Ask an owner to add one.{% endif %}</div>
-  {% endif %}
-  <form method="post" action="/w/{{ workspace.slug }}/{{ 'suites/' ~ form.suite ~ '/scenarios/' ~ scenario_id ~ '/edit' if scenario_id else 'scenarios/new' }}" class="stack">
+</div>
+{% if errors %}
+{% call m.msg_block("error") %}
+<strong>The scenario was not saved.</strong>
+<ul>{% for e in errors %}{% if e.strip() %}<li>{{ e.strip().lstrip("- ") }}</li>{% endif %}{% endfor %}</ul>
+{% endcall %}
+{% endif %}
+{% if not connections %}
+{% call m.msg_block("error") %}This workspace has no connections yet. {% if workspace.is_owner %}<a href="{{ base }}">Add a connection</a> first.{% else %}Ask an owner of this workspace to add one.{% endif %}{% endcall %}
+{% endif %}
+
+<section class="panel">
+  <form class="form panel-body" method="post" action="{{ here ~ '/edit' if scenario_id else base ~ '/scenarios/new' }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
 
-    {% if scenario_id %}
-    <p class="muted small">Test suite: {{ form.suite }}</p>
-    {% else %}
-    <fieldset>
-      <legend>Test suite</legend>
-      {% if suites %}
-      <label>Add to
-        <select name="suite">
-          {% for s in suites %}<option value="{{ s }}"{% if form.suite == s %} selected{% endif %}>{{ s }}</option>{% endfor %}
-        </select>
-      </label>
-      {% else %}<input type="hidden" name="suite" value="__new__">{% endif %}
-      <label>{{ "Or start a new suite" if suites else "Suite name" }}{% if suites %} <span class="hint">Leave empty to add to the suite above</span>{% endif %}
-        <input name="new_suite" value="{{ form.new_suite }}" placeholder="hr-payroll">
-      </label>
-    </fieldset>
-    {% endif %}
+    <div class="form-section">
+      <h2>What to test</h2>
+      {% if not scenario_id %}
+      <input type="hidden" name="suite" value="__new__">
+      {% set suite_value = form.new_suite or (form.suite if form.suite != "__new__" else "") or (suites[0] if suites | length == 1 else "") %}
+      <div class="field">
+        <label for="s-suite">Test suite</label>
+        <input id="s-suite" name="new_suite" value="{{ suite_value }}" list="suite-options" required spellcheck="false" autocomplete="off"{% if not suites %} placeholder="hr-payroll"{% endif %}>
+        <datalist id="suite-options">{% for s in suites %}<option value="{{ s }}">{% endfor %}</datalist>
+        <span class="help">{% if suites %}Pick an existing suite or type a new name.{% else %}A suite groups scenarios that run together, for example per interface.{% endif %}</span>
+      </div>
+      {% endif %}
+      <div class="field">
+        <label for="s-title">Title</label>
+        <input id="s-title" name="title" value="{{ form.title }}" maxlength="200" required placeholder="Employee with two contracts in the same month">
+      </div>
+      <div class="field">
+        <label for="s-req">Business requirement</label>
+        <textarea id="s-req" name="requirement" rows="3" required placeholder="When an employee changes contract in the middle of a month, payroll must receive one cost line per contract.">{{ form.requirement }}</textarea>
+        <span class="help">In the words of whoever asked for it. Every report shows it next to the result.</span>
+      </div>
+    </div>
 
-    <label>Title
-      <input name="title" value="{{ form.title }}" maxlength="200" required placeholder="Employee with two contracts in the same month">
-    </label>
-    <label>Business requirement
-      <textarea name="requirement" rows="3" required placeholder="When an employee changes contract in the middle of a month, payroll must receive one cost line per contract.">{{ form.requirement }}</textarea>
-      <span class="hint">In the words of whoever asked for it. Every report shows it next to the result.</span>
-    </label>
-    <label>Connection
-      <select name="connection" required>
-        {% for v in connections %}<option value="{{ v.connection.name }}"{% if form.connection == v.connection.name %} selected{% endif %}>{{ v.connection.name }} ({{ v.title }})</option>{% endfor %}
-      </select>
-    </label>
-    <label>Records to test <span class="hint">Optional, SQL connections only</span>
-      <textarea class="code" name="select" rows="5" spellcheck="false" placeholder="SELECT employee_id, month FROM &quot;HR_CONTRACTS_V&quot; GROUP BY employee_id, month HAVING COUNT(*) = 2">{{ form.select }}</textarea>
-      <span class="hint">A query that finds the real records this scenario is about. Checks use them with <code>{{ "{{ selection }}" }}</code>. If it finds none, the scenario is reported as not tested.</span>
-    </label>
-    <label>Checks
-      <textarea class="code" name="checks" rows="14" spellcheck="false" required placeholder="- name: no contract without cost center&#10;  query: SELECT contract_id FROM &quot;HR_CONTRACTS_V&quot; WHERE cost_center IS NULL&#10;  expect:&#10;    row_count: 0">{{ form.checks }}</textarea>
-      <span class="hint">YAML: a list of checks, each with a name, a query and what to expect.</span>
-    </label>
-    <details class="help">
-      <summary>How to write checks</summary>
-      <p>Each check runs one query and compares the result with one or more expectations:</p>
-      <table>
-        <tr><td><code>row_count: 0</code></td><td>Exactly this many rows, or a range: <code>row_count: {min: 1}</code>. A query for the violations with <code>row_count: 0</code> lists exactly the records to fix.</td></tr>
-        <tr><td><code>all_rows: fte &gt; 0 and fte &lt;= 1</code></td><td>Every row meets a rule (columns, arithmetic, comparisons, and, or, not, in, abs, round).</td></tr>
-        <tr><td><code>regression: {keys: [contract_id]}</code></td><td>Same result as the stored baseline. Capture a baseline first on a known-good state.</td></tr>
-        <tr><td><code>reconcile: {connection: sf, query: ..., keys: [userId]}</code></td><td>Same result as a query on another connection, for example source against target.</td></tr>
-        <tr><td><code>equals: {rows: [...]}</code></td><td>Exactly these rows.</td></tr>
-      </table>
-      <p>On SAP Datasphere the query is SQL (<code>SELECT</code> only). On SAP SuccessFactors it is an OData path, for example <code>EmpJob?$select=userId,startDate,costCenter&amp;$filter=company eq 'ACME'</code>.</p>
-      <p>Write the business requirement in plain words to Claude Code with the <code>write-scenario</code> skill to get the checks drafted from the real column names.</p>
+    <div class="form-section">
+      <h2>How to test it</h2>
+      <div class="field">
+        <label for="s-conn">Connection</label>
+        <select id="s-conn" name="connection" required>
+          {% for v in connections %}<option value="{{ v.connection.name }}"{% if form.connection == v.connection.name %} selected{% endif %}>{{ v.connection.name }} · {{ v.title }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="s-select">Records to test <span class="optional">(optional, SQL connections)</span></label>
+        <textarea id="s-select" class="code" name="select" rows="4" spellcheck="false" placeholder="SELECT employee_id, month FROM &quot;HR_CONTRACTS_V&quot; GROUP BY employee_id, month HAVING COUNT(*) = 2">{{ form.select }}</textarea>
+        <span class="help">A query that finds the real records this scenario is about. Checks reuse them with <code>{{ "{{ selection }}" }}</code>. When it finds none, the scenario is reported as not tested.</span>
+      </div>
+      <div class="field">
+        <label for="s-checks">Checks</label>
+        <textarea id="s-checks" class="code" name="checks" rows="12" spellcheck="false" required placeholder="- name: no contract without cost center&#10;  query: SELECT contract_id FROM &quot;HR_CONTRACTS_V&quot; WHERE cost_center IS NULL&#10;  expect:&#10;    row_count: 0">{{ form.checks }}</textarea>
+        <span class="help">YAML: a list of checks, each with a name, a query and what to expect.</span>
+        <details class="disclosure">
+          <summary>{{ icon("chevron-right") }}How to write checks</summary>
+          <div class="disclosure-body stack-sm small">
+            <table class="ref-table">
+              <tr><td><code>row_count: 0</code></td><td>Exactly this many rows, or a range: <code>row_count: {min: 1}</code>. A query for the violations with <code>row_count: 0</code> lists exactly the records to fix.</td></tr>
+              <tr><td><code>all_rows: fte &gt; 0 and fte &lt;= 1</code></td><td>Every row meets a rule (columns, arithmetic, comparisons, and, or, not, in, abs, round).</td></tr>
+              <tr><td><code>regression: {keys: [contract_id]}</code></td><td>Same result as the stored baseline. Capture a baseline first on a known-good state.</td></tr>
+              <tr><td><code>reconcile: {connection: sf, query: ..., keys: [userId]}</code></td><td>Same result as a query on another connection, for example source against target.</td></tr>
+              <tr><td><code>equals: {rows: [...]}</code></td><td>Exactly these rows.</td></tr>
+            </table>
+            <p class="muted">On SAP Datasphere the query is SQL (<code>SELECT</code> only). On SAP SuccessFactors it is an OData path, for example <code>EmpJob?$select=userId,startDate,costCenter&amp;$filter=company eq 'ACME'</code>.</p>
+            <p class="muted">Or describe the requirement to Claude Code with the <code>write-scenario</code> skill to get the checks drafted from the real column names.</p>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <details class="disclosure form-section"{% if form.tags or form.description %} open{% endif %}>
+      <summary>{{ icon("chevron-right") }}Tags and notes</summary>
+      <div class="disclosure-body stack-sm">
+        <div class="field">
+          <label for="s-tags">Tags <span class="optional">(separated by commas)</span></label>
+          <input id="s-tags" name="tags" value="{{ form.tags }}" placeholder="payroll, edge-case">
+        </div>
+        <div class="field">
+          <label for="s-notes">Notes <span class="optional">(assumptions, open questions for the reviewer)</span></label>
+          <textarea id="s-notes" name="description" rows="3">{{ form.description }}</textarea>
+        </div>
+      </div>
     </details>
-    <label>Tags <span class="hint">Optional, separated by commas</span>
-      <input name="tags" value="{{ form.tags }}" placeholder="payroll, edge-case">
-    </label>
-    <label>Notes <span class="hint">Optional: assumptions, open questions for the reviewer</span>
-      <textarea name="description" rows="3">{{ form.description }}</textarea>
-    </label>
-    <div class="actions">
-      <button type="submit"{% if not connections %} disabled{% endif %}>Save scenario</button>
-      <a class="button secondary" href="{{ '/w/' ~ workspace.slug ~ '/suites/' ~ form.suite ~ '/scenarios/' ~ scenario_id if scenario_id else '/w/' ~ workspace.slug }}">Cancel</a>
+
+    <div class="form-actions">
+      <button class="btn primary" type="submit"{% if not connections %} disabled{% endif %}>Save scenario</button>
+      <a class="btn ghost" href="{{ here if scenario_id else base }}">Cancel</a>
     </div>
   </form>
 </section>
+
+{% if scenario_id %}
+<section class="panel danger-zone" aria-labelledby="danger-title">
+  <div class="panel-body">
+    <h2 id="danger-title">Delete this scenario</h2>
+    <p>Its baselines are deleted too. Reports of earlier runs stay available.</p>
+    <details class="disclosure">
+      <summary>{{ icon("chevron-right") }}Delete scenario…</summary>
+      <form class="disclosure-body" method="post" action="{{ here }}/delete">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn danger" type="submit">{{ icon("trash") }}Delete {{ form.title or scenario_id }}</button>
+      </form>
+    </details>
+  </div>
+</section>
+{% endif %}
 {% endblock %}

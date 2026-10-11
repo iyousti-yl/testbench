@@ -1,26 +1,36 @@
+{% import "_macros.html" as m -%}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>{% block title %}Testbench{% endblock %}</title>
+  <link rel="preload" href="/static/fonts/SourceSans3-Variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <header class="shell">
-    <a class="brand" href="/">Testbench</a>
+    <a class="shell-brand" href="/" aria-label="Testbench home">{{ logo() }}<span>Testbench</span></a>
     {% if user %}
-    <div class="who">
-      <span>{{ user.name }}</span>
-      <form method="post" action="/logout">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <button class="link" type="submit">Sign out</button>
-      </form>
+    <nav class="crumbs" aria-label="Breadcrumb">{% block crumbs %}{% endblock %}</nav>
+    <div class="shell-end">
+      <details class="menu">
+        <summary class="avatar" title="{{ user.name }}"><span class="sr-only">Account menu for {{ user.name }}</span><span aria-hidden="true">{{ user.name | initials }}</span></summary>
+        <div class="menu-pop">
+          <div class="menu-head"><strong>{{ user.name }}</strong><span>{{ user.email }}</span></div>
+          <form method="post" action="/logout">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="menu-item" type="submit">{{ icon("logout") }}<span>Sign out</span></button>
+          </form>
+        </div>
+      </details>
     </div>
     {% endif %}
   </header>
-  <main>
-    {% for m in messages %}<div class="flash {{ m.kind }}">{{ m.message }}</div>{% endfor %}
+  <main class="page{% block page_class %}{% endblock %}" id="main">
+    {% for msg in messages %}{{ m.msg(msg.kind, msg.message) }}{% endfor %}
     {% block content %}{% endblock %}
   </main>
 </body>

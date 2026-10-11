@@ -1,30 +1,44 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
+{% block title %}Workspaces · Testbench{% endblock %}
+{% block crumbs %}<span aria-current="page">Workspaces</span>{% endblock %}
 {% block content %}
-<div class="row">
-  <h1>Your workspaces</h1>
-  <a class="button" href="/workspaces/new">New workspace</a>
+<div class="page-head">
+  <div><h1>Workspaces</h1></div>
+  {% if tiles %}<a class="btn primary" href="/workspaces/new">{{ icon("plus") }}New workspace</a>{% endif %}
 </div>
-{% if workspaces %}
-<div class="grid">
-  {% for w, connections in workspaces %}
-  <a class="card tile-link" href="/w/{{ w.slug }}">
-    <strong>{{ w.name }}</strong>
-    {% if w.description %}<span class="muted clamp">{{ w.description }}</span>{% endif %}
-    {% for view in connections %}
-    <span class="conn-line">{{ m.status(view.connection) }} {{ view.title }}{% for field, value in view.summary[:2] %} · {{ value | replace("https://", "") }}{% endfor %}</span>
-    {% else %}
-    <span class="muted">No connections yet</span>
-    {% endfor %}
-    <span class="muted small">{{ "Owner" if w.is_owner else "Member" }}</span>
+
+{% if tiles %}
+<div class="tiles">
+  {% for w, connections, statuses in tiles %}
+  <a class="tile panel" href="/w/{{ w.slug }}">
+    <div>
+      <div class="tile-head"><span class="tile-title">{{ w.name }}</span><span class="tile-role">{{ "Owner" if w.is_owner else "Member" }}</span></div>
+      {% if w.description %}<p class="tile-sub clamp">{{ w.description }}</p>{% endif %}
+    </div>
+    <div class="health">
+      {% if statuses %}{{ m.strip(statuses, "Latest result of each scenario") }}<span>{{ m.health_text(statuses) }}</span>
+      {% else %}<span>No scenarios yet</span>{% endif %}
+    </div>
+    <div class="tile-foot">
+      <ul class="tile-conns">
+        {% for view in connections %}
+        {% set line %}{% for field, value in view.summary[:2] %}{{ value | replace("https://", "") }}{% if not loop.last %} · {% endif %}{% else %}{{ view.title }}{% endfor %}{% endset %}
+        <li title="{{ view.connection.name }}: {{ line }}">{{ icon(view.icon) }}<span class="clamp-1">{{ line }}</span>{% if view.connection.check_ok == false %}{{ icon("failed", "Cannot connect", cls="negative") }}{% endif %}</li>
+        {% else %}
+        <li>No connections yet</li>
+        {% endfor %}
+      </ul>
+    </div>
   </a>
   {% endfor %}
 </div>
 {% else %}
-<section class="card empty">
-  <h2>No workspaces yet</h2>
-  <p class="muted">A workspace holds the connections, test scenarios and results for one client or project. Only its members can open it.</p>
-  <a class="button" href="/workspaces/new">Create your first workspace</a>
+<section class="panel empty">
+  <span class="empty-mark">{{ icon("workspace") }}</span>
+  <h2>Create your first workspace</h2>
+  <p>A workspace holds the connections, test scenarios and results of one client or project. Only its members can open it.</p>
+  <a class="btn primary" href="/workspaces/new">{{ icon("plus") }}New workspace</a>
 </section>
 {% endif %}
 {% endblock %}

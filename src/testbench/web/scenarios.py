@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from markupsafe import Markup
 
 from testbench.connectors import ConnectorError, connector_class
 from testbench.scenario import (
@@ -70,6 +71,36 @@ class ScenarioForm:
             checks=dump_yaml(checks) if checks else "",
             suite=suite,
         )
+
+
+def describe_expectation(expectation: str, spec: Any) -> Markup:
+    """One expectation in plain words for the scenario page; rules are shown as code."""
+    if expectation == "row_count":
+        if isinstance(spec, int):
+            return Markup("no rows" if spec == 0 else f"exactly {spec} row{'s' * (spec != 1)}")
+        if isinstance(spec, dict):
+            low, high = spec.get("min"), spec.get("max")
+            parts = [f"at least {low}" if low is not None else ""]
+            parts.append(f"at most {high}" if high is not None else "")
+            last = high if high is not None else low
+            return Markup(" and ".join(p for p in parts if p) + f" row{'s' * (last != 1)}")
+    if expectation == "all_rows":
+        rules = [spec] if isinstance(spec, str) else list(spec or [])
+        return Markup("every row: ") + Markup(", ").join(
+            Markup("<code>{}</code>").format(r) for r in rules
+        )
+    if expectation == "regression":
+        keys = spec.get("keys") if isinstance(spec, dict) else None
+        text = Markup("same as the baseline")
+        return text + (Markup(" by <code>{}</code>").format(", ".join(keys)) if keys else "")
+    if expectation == "reconcile" and isinstance(spec, dict):
+        other = spec.get("connection")
+        if other:
+            return Markup("matches a query on <code>{}</code>").format(other)
+        return Markup("matches the other query")
+    if expectation == "equals":
+        return Markup("exactly the expected rows")
+    return Markup("{}").format(expectation)
 
 
 def slugify(text: str) -> str:
