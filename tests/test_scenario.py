@@ -54,6 +54,6 @@ def test_missing_connection_is_an_error(tmp_path: Path) -> None:
         load_scenario(write(tmp_path / "a.json", data))
 
 
-def test_example_suite_is_valid() -> None:
-    example = Path(__file__).parents[1] / "src" / "testbench" / "example" / "suites" / "hr-payroll"
-    assert len(load_suite(example).scenarios) == 4
+def test_fixture_suite_is_valid() -> None:
+    suite = Path(__file__).parent / "fixtures" / "suites" / "contracts"
+    assert len(load_suite(suite).scenarios) == 4

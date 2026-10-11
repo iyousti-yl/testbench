@@ -17,7 +17,7 @@ The engine only executes the fixed structure in `src/testbench/schema/scenario.s
 
 1. **Read the contract.** Read `src/testbench/schema/scenario.schema.json` and one or two existing scenarios in the suite, so the file matches the house style.
 
-2. **Find the real objects and columns.** Run `testbench objects <connection> --columns` and pick the tables or views the requirement talks about. Never invent a column name. If the requirement uses a business term (for example "cost line" or "contract change") that maps to more than one candidate, ask one short question with the candidates, or pick the most likely one and write the assumption in `description`.
+2. **Find the real objects and columns.** Run `testbench objects <connection> --columns` and pick the tables or views the requirement talks about. On a SuccessFactors connection there are hundreds of entities: narrow it with `--match`, for example `testbench objects sf --match EmpJob --columns` (the output includes the business label of each property). Never invent a column name. If the requirement uses a business term (for example "cost line" or "contract change") that maps to more than one candidate, ask one short question with the candidates, or pick the most likely one and write the assumption in `description`.
 
 3. **Choose the pattern** that fits the requirement:
 
@@ -37,6 +37,7 @@ The engine only executes the fixed structure in `src/testbench/schema/scenario.s
    - `tags`: the business area plus the pattern (`edge-case`, `regression`, `reconciliation`, `data-quality`).
    - Check `name`s in business language ("one cost line per contract"), not SQL.
    - SQL: `SELECT` only, in the connection's dialect. Quote identifiers the way that system needs (Datasphere/HANA: `"VIEW_NAME"`). Aggregate amounts with `ROUND(..., 2)` before comparing.
+   - SuccessFactors connections take an OData path instead of SQL: `EmpJob?$select=userId,startDate,costCenter&$filter=company eq 'X'`. Always `$select` the columns you need. Use `fromDate`/`toDate`/`asOfDate` for effective-dated entities. `select` and `{{ selection }}` only work with SQL connections, so a SuccessFactors source is usually the `reconcile` side of a check on Datasphere. Write `&` inside a filter value as `%26`.
    - One scenario per business rule. Split a requirement that contains several rules.
 
 5. **Validate and dry-run.**

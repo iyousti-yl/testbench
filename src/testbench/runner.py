@@ -23,7 +23,7 @@ from testbench.checks import (
     check_row_count,
 )
 from testbench.compare import CompareError, snapshot
-from testbench.config import ConfigError, ProjectConfig, expand_env
+from testbench.config import ConfigError, ProjectConfig
 from testbench.connectors import Connector, ConnectorError, create_connector
 from testbench.connectors.base import ensure_read_only
 from testbench.expressions import ExpressionError
@@ -113,15 +113,17 @@ class Runner:
     def connection(self, name: str) -> Connector:
         if name not in self._connections:
             cfg = self.config.connection(name)
-            settings = {**expand_env(cfg.settings), **self.secrets.get(name, {})}
+            settings = {**cfg.resolved_settings(), **self.secrets.get(name, {})}
             self._connections[name] = create_connector(
                 cfg.type, {**settings, "base_dir": self.config.root}
             )
         return self._connections[name]
 
     def query(self, connection: str, sql: str) -> Table:
-        ensure_read_only(sql)
-        return self.connection(connection).query(sql)
+        connector = self.connection(connection)
+        if "sql" in connector.capabilities:
+            ensure_read_only(sql)  # OData and other APIs are read-only by construction
+        return connector.query(sql)
 
     def close(self) -> None:
         for conn in self._connections.values():

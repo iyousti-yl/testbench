@@ -1,4 +1,5 @@
-"""Workspace content on disk: configuration, suites, runs. Always reached through a membership."""
+"""Workspace content: connections from the app database, suites and runs from the workspace
+folder. Always reached through a membership."""
 
 from __future__ import annotations
 
@@ -10,14 +11,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from testbench.config import ProjectConfig, load_config
+from testbench.config import ConnectionConfig, ProjectConfig
 from testbench.report import write_report
 from testbench.runner import Runner, RunResult, save_run
 from testbench.scenario import Scenario, Suite, list_suites, load_suite
 from testbench.web.store import Store, Workspace
 
 RUN_ID = re.compile(r"^[0-9TZ]+-[a-z0-9-]+-(run|baseline)$")
-_locks: defaultdict[str, threading.Lock] = defaultdict(threading.Lock)
+_locks: defaultdict[int, threading.Lock] = defaultdict(threading.Lock)
+
+
+def workspace_lock(workspace: Workspace) -> threading.Lock:
+    """One run, or a delete, at a time per workspace."""
+    return _locks[workspace.id]
 
 
 class NotFound(Exception):
@@ -41,7 +47,23 @@ class WorkspaceFiles:
         self.root = store.workspace_dir(workspace)
 
     def config(self) -> ProjectConfig:
-        return load_config(self.root)
+        connections = {
+            c.name: ConnectionConfig(
+                name=c.name,
+                type=c.type,
+                sensitive=c.sensitive,
+                settings=c.settings,
+                env_vars=False,  # typed in the app: never read the server's environment
+            )
+            for c in self.store.connections(self.workspace)
+        }
+        return ProjectConfig(
+            root=self.root,
+            project=self.workspace.name,
+            connections=connections,
+            suites_dir=self.root / "suites",
+            output_dir=self.root / ".testbench",
+        )
 
     def suites(self) -> list[Suite]:
         config = self.config()
@@ -62,7 +84,7 @@ class WorkspaceFiles:
     def run(self, suite_name: str, mode: str) -> RunResult:
         self.suite(suite_name)  # 404 for unknown suites before anything runs
         config = self.config()
-        with _locks[self.workspace.slug]:
+        with workspace_lock(self.workspace):
             runner = Runner(config, secrets=self.store.secrets_for(self.workspace))
             result = runner.run_suite(suite_name, mode=mode)
             run_dir = save_run(result, config.output_dir)

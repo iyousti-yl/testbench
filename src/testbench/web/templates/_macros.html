@@ -1,0 +1,14 @@
+{% macro status(c) -%}
+{% if c.check_ok is none %}<span class="badge skipped">Not tested</span>
+{% elif c.check_ok %}<span class="badge passed">Connected</span>
+{% else %}<span class="badge failed">Cannot connect</span>{% endif %}
+{%- endmacro %}
+
+{% macro summary(view) -%}
+<dl class="summary">
+  {% for field, value in view.summary %}
+  <dt>{{ field.label }}</dt>
+  <dd>{% if field.kind == "url" %}<a href="{{ value }}" target="_blank" rel="noopener noreferrer">{{ value }}</a>{% else %}{{ value }}{% endif %}</dd>
+  {% endfor %}
+</dl>
+{%- endmacro %}

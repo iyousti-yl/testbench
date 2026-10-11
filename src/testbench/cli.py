@@ -6,19 +6,54 @@ import argparse
 import sys
 from pathlib import Path
 
-from testbench import __version__, demo
-from testbench.config import ConfigError, expand_env, load_config
+from testbench import __version__
+from testbench.config import CONFIG_FILE, ConfigError, load_config
 from testbench.connectors import ConnectorError, create_connector
 from testbench.report import console_summary, write_report
 from testbench.runner import Runner, save_run
 from testbench.scenario import ScenarioError, list_suites, load_suite
 
+_PROJECT_TEMPLATE = """\
+# Testbench project configuration.
+# Secrets never go in this file: use ${{ENV_VAR}} references instead.
+project: {name}
+
+connections:
+  # SAP Datasphere (pip install 'testbench[datasphere]'):
+  # datasphere:
+  #   type: datasphere
+  #   tenant_url: https://<tenant>.<region>.hcs.cloud.sap
+  #   space: <SPACE_ID>
+  #   host: ${{DSP_HOST}}
+  #   user: ${{DSP_USER}}
+  #   password: ${{DSP_PASSWORD}}
+  #   sensitive: true        # personal data: baselines keep hashes, not values
+
+  # SAP SuccessFactors OData API (pip install 'testbench[successfactors]'):
+  # successfactors:
+  #   type: successfactors
+  #   api_url: https://<api-server>
+  #   company_id: ${{SF_COMPANY_ID}}
+  #   auth: oauth
+  #   client_id: ${{SF_CLIENT_ID}}
+  #   user_id: ${{SF_USER_ID}}
+  #   private_key: ${{SF_PRIVATE_KEY}}
+  #   sensitive: true
+
+suites_dir: suites
+"""
+
 
 def cmd_init(args: argparse.Namespace) -> int:
     target = Path(args.directory)
-    demo.create_example_project(target)
-    print(f"Created an example project in {target.resolve()}")
-    print("Next: cd into it, run 'testbench baseline hr-payroll', then 'testbench run hr-payroll'.")
+    config_path = target / CONFIG_FILE
+    if config_path.exists():
+        raise FileExistsError(f"{config_path} already exists")
+    (target / "suites").mkdir(parents=True, exist_ok=True)
+    name = target.resolve().name
+    config_path.write_text(_PROJECT_TEMPLATE.format(name=name), encoding="utf-8")
+    print(f"Created {config_path}")
+    print("Next: add a connection, then check it with 'testbench connections'.")
     return 0
 
 
@@ -32,7 +67,7 @@ def cmd_connections(args: argparse.Namespace) -> int:
         label = f"{name} ({conn.type}{', sensitive' if conn.sensitive else ''})"
         try:
             connector = create_connector(
-                conn.type, {**expand_env(conn.settings), "base_dir": config.root}
+                conn.type, {**conn.resolved_settings(), "base_dir": config.root}
             )
             connector.test_connection()
             connector.close()
@@ -46,13 +81,16 @@ def cmd_connections(args: argparse.Namespace) -> int:
 def cmd_objects(args: argparse.Namespace) -> int:
     config = load_config()
     conn = config.connection(args.connection)
-    connector = create_connector(conn.type, {**expand_env(conn.settings), "base_dir": config.root})
+    connector = create_connector(conn.type, {**conn.resolved_settings(), "base_dir": config.root})
     try:
         for obj in connector.list_objects(args.scope):
+            if args.match and args.match.lower() not in obj.name.lower():
+                continue
             print(f"{obj.kind:6} {obj.name}")
             if args.columns:
                 for col in connector.describe(obj).columns:
-                    print(f"         {col.name}  {col.type}{'  (key)' if col.key else ''}")
+                    label = f"  {col.label}" if col.label else ""
+                    print(f"         {col.name}  {col.type}{'  (key)' if col.key else ''}{label}")
     finally:
         connector.close()
     return 0
@@ -91,16 +129,6 @@ def _run(args: argparse.Namespace, mode: str) -> int:
     return 0 if result.status in ("passed", "skipped") else 1
 
 
-def cmd_demo(args: argparse.Namespace) -> int:
-    config = load_config()
-    demo.set_broken(config.root, broken=args.action == "break")
-    if args.action == "break":
-        print("Introduced a logic defect (contract changes mid-month) and a missing cost center.")
-    else:
-        print("Restored the demo to its correct state.")
-    return 0
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="testbench", description="Business-scenario regression testing for data landscapes."
@@ -108,16 +136,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"testbench {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("init", help="create an example project with synthetic demo data")
+    p = sub.add_parser("init", help="create an empty project with connection templates")
     p.add_argument("directory", nargs="?", default=".")
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("connections", help="test every configured connection")
     p.set_defaults(func=cmd_connections)
 
-    p = sub.add_parser("objects", help="list tables and views of a connection")
+    p = sub.add_parser("objects", help="list tables, views or entities of a connection")
     p.add_argument("connection")
     p.add_argument("--scope", help="schema or space to list")
+    p.add_argument("--match", help="only names that contain this text, for example EmpJob")
     p.add_argument("--columns", action="store_true", help="also show columns")
     p.set_defaults(func=cmd_objects)
 
@@ -139,10 +168,6 @@ def build_parser() -> argparse.ArgumentParser:
             "--scenario", action="append", help="only this scenario (file name without extension)"
         )
         p.set_defaults(func=lambda a, m=mode: _run(a, m))
-
-    p = sub.add_parser("demo", help="break or fix the demo data to see failures")
-    p.add_argument("action", choices=["break", "fix"])
-    p.set_defaults(func=cmd_demo)
 
     try:
         from testbench.web.admin import add_parser as add_web_parser

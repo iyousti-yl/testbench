@@ -47,12 +47,35 @@ class ColumnInfo:
     type: str
     nullable: bool = True
     key: bool = False
+    label: str = ""  # business name, when the system has one
 
 
 @dataclass
 class ObjectSchema:
     ref: ObjectRef
     columns: list[ColumnInfo] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SettingField:
+    """One setting a person fills in to add a connection in the web app.
+
+    A connector is offered in the web app only when it declares ``title`` and
+    ``settings_fields``. It may also declare ``check_settings(settings) -> settings`` to
+    validate and normalise what was typed, raising ``ConnectorError`` with a readable message.
+    """
+
+    key: str
+    label: str
+    help: str = ""
+    placeholder: str = ""
+    kind: str = "text"  # text, url, password, textarea, choice
+    choices: tuple[tuple[str, str], ...] = ()  # (value, label) for kind "choice"
+    default: str = ""
+    required: bool = True
+    secret: bool = False  # stored encrypted, never shown again
+    summary: bool = False  # shown on the connection card, for example tenant and space
+    group: str = ""  # fields with the same group are shown together
 
 
 @runtime_checkable

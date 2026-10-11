@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Delete {{ view.connection.name }} · Testbench{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a></nav>
+<section class="card form-card">
+  <h1>Delete connection {{ view.connection.name }}?</h1>
+  <p class="muted">{{ view.title }}</p>
+  {{ m.summary(view) }}
+  <p>Its stored credentials are deleted. Scenarios that use <code>{{ view.connection.name }}</code> will stop running until you add a connection with that name again.</p>
+  <form method="post" action="/w/{{ workspace.slug }}/connections/{{ view.connection.id }}/delete">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="actions">
+      <button class="danger" type="submit">Delete connection</button>
+      <a class="button secondary" href="/w/{{ workspace.slug }}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
