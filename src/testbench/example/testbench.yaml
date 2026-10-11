@@ -14,12 +14,13 @@ connections:
     path: demo/sf_source.db
     sensitive: true
 
-  # A real Datasphere space would look like this (connector arrives in milestone 2):
+  # A real Datasphere space (pip install 'testbench[datasphere]'):
   # datasphere_dev:
   #   type: datasphere
   #   host: ${DSP_HOST}
   #   user: ${DSP_USER}
   #   password: ${DSP_PASSWORD}
+  #   schema: HR_SPACE         # the space id
   #   sensitive: true
 
 suites_dir: suites

@@ -30,6 +30,28 @@ The demo suite covers four kinds of test:
 | Payroll export matches SuccessFactors | Reconciliation between two systems |
 | Contract data is complete and plausible | Data-quality rules (written in JSON) |
 
+## Connect SAP Datasphere
+
+In Datasphere, create a database user for the space (Space Management > Database Access) with read access, then:
+
+```bash
+pip install -e ".[datasphere]"
+```
+
+```yaml
+# testbench.yaml
+connections:
+  datasphere_dev:
+    type: datasphere
+    host: ${DSP_HOST}          # <tenant>.hana.prod-<region>.hanacloud.ondemand.com
+    user: ${DSP_USER}          # <SPACE_ID>#<SUFFIX>
+    password: ${DSP_PASSWORD}
+    schema: HR_SPACE           # the space id
+    sensitive: true
+```
+
+`testbench connections` checks the connection and `testbench objects datasphere_dev --columns` lists the exposed views. In the web app, store the password with `testbench web set-secret <workspace> datasphere_dev password` instead of an environment variable.
+
 ## Run the web app
 
 The web app puts each client case in its own workspace. Users sign in and only see the workspaces they are members of.
