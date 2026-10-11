@@ -1,0 +1,25 @@
+# Testbench project configuration.
+# Secrets never go in this file: use ${ENV_VAR} references instead.
+project: HR payroll demo
+
+connections:
+  # Stands in for SAP Datasphere (synthetic data).
+  target:
+    type: sqlite
+    path: demo/datasphere.db
+    sensitive: true        # HR data: baselines keep hashes, not values
+  # Stands in for the SuccessFactors extract (synthetic data).
+  source:
+    type: sqlite
+    path: demo/sf_source.db
+    sensitive: true
+
+  # A real Datasphere space would look like this (connector arrives in milestone 2):
+  # datasphere_dev:
+  #   type: datasphere
+  #   host: ${DSP_HOST}
+  #   user: ${DSP_USER}
+  #   password: ${DSP_PASSWORD}
+  #   sensitive: true
+
+suites_dir: suites

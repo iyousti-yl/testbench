@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "testbench"
+version = "0.1.0"
+description = "Business-scenario regression testing for SAP data landscapes"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pyyaml>=6", "jsonschema>=4.18"]
+
+[project.optional-dependencies]
+datasphere = ["hdbcli>=2.19"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+testbench = "testbench.cli:main"
+
+[project.entry-points."testbench.connectors"]
+sqlite = "testbench.connectors.sqlite:SQLiteConnector"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+testbench = ["schema/*.json", "example/**/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
