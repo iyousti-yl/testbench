@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -10,6 +11,23 @@ from testbench.table import Table
 
 class ConnectorError(Exception):
     """Raised when a connector cannot connect or a query fails."""
+
+
+_COMMENTS = re.compile(r"(--[^\n]*)|(/\*.*?\*/)", re.DOTALL)
+_READ_START = ("select", "with", "(")
+
+
+def ensure_read_only(sql: str) -> None:
+    """Refuse anything but a single SELECT. Connectors must never change client data.
+
+    This is a guard against mistakes, not a security boundary: the database user itself
+    must only have read privileges.
+    """
+    statement = _COMMENTS.sub(" ", sql).strip().rstrip(";").strip()
+    if not statement.lower().startswith(_READ_START):
+        raise ConnectorError("only SELECT queries are allowed")
+    if ";" in statement:
+        raise ConnectorError("only one statement per query is allowed")
 
 
 @dataclass(frozen=True)

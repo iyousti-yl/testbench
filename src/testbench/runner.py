@@ -25,8 +25,10 @@ from testbench.checks import (
 from testbench.compare import CompareError, snapshot
 from testbench.config import ConfigError, ProjectConfig, expand_env
 from testbench.connectors import Connector, ConnectorError, create_connector
+from testbench.connectors.base import ensure_read_only
 from testbench.expressions import ExpressionError
 from testbench.scenario import Check, Scenario, Suite, load_suite
+from testbench.table import Table
 
 _SELECTION = re.compile(r"\{\{\s*selection\s*\}\}")
 _RECOVERABLE = (ConnectorError, CompareError, ExpressionError, ConfigError, OSError, ValueError)
@@ -117,6 +119,10 @@ class Runner:
             )
         return self._connections[name]
 
+    def query(self, connection: str, sql: str) -> Table:
+        ensure_read_only(sql)
+        return self.connection(connection).query(sql)
+
     def close(self) -> None:
         for conn in self._connections.values():
             conn.close()
@@ -163,7 +169,7 @@ class Runner:
 
         if scenario.select:
             try:
-                selected = self.connection(scenario.connection).query(scenario.select)
+                selected = self.query(scenario.connection, scenario.select)
             except _RECOVERABLE as exc:
                 result.status, result.message = ERROR, f"selection failed: {exc}"
                 return result
@@ -183,7 +189,7 @@ class Runner:
         connection_name = check.connection or scenario.connection
         try:
             sql = render_query(check.query, scenario.select)
-            table = self.connection(connection_name).query(sql)
+            table = self.query(connection_name, sql)
             result.rows = len(table)
 
             if mode == "baseline":
@@ -231,7 +237,7 @@ class Runner:
             if expectation == "reconcile":
                 other_conn = spec.get("connection") or check.connection or scenario.connection
                 other_sql = render_query(spec["query"], scenario.select)
-                other = self.connection(other_conn).query(other_sql)
+                other = self.query(other_conn, other_sql)
                 return check_reconcile(spec, table, other)
         except _RECOVERABLE as exc:
             return Outcome(expectation, ERROR, str(exc))

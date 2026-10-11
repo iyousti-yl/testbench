@@ -10,6 +10,7 @@ from testbench.connectors.base import Connector, ConnectorError
 # Built-ins stay available even when the package is not installed (for example in a checkout).
 _BUILTIN = {
     "sqlite": "testbench.connectors.sqlite:SQLiteConnector",
+    "datasphere": "testbench.connectors.datasphere:DatasphereConnector",
 }
 
 

@@ -36,7 +36,8 @@ class Connector(Protocol):
 
 - `Table` is a light in-memory table (columns + rows) so the core does not depend on any one database library.
 - Connectors are discovered through Python entry points (`testbench.connectors`), so a connector can also ship as a separate package later.
-- **Datasphere connector:** SQL over the HANA protocol (`hdbcli`) using a Datasphere database user on the space's Open SQL schema. It can read views that are exposed for consumption. Object metadata comes from the same SQL access first; the Datasphere CLI is an optional extra.
+- **Datasphere connector:** SQL over the HANA protocol (`hdbcli`, TLS only) using a space's database user with read access. It reads the views the space exposes for consumption; `schema` (the space id) becomes the current schema so scenarios can use unqualified view names. Object metadata comes from `SYS.VIEWS`, `SYS.TABLES` and their column views. The Datasphere CLI is an optional extra for later.
+- **Read-only guard:** the runner refuses any statement that is not a single `SELECT` (or `WITH`) before it reaches a connector. This prevents mistakes; the real protection is a database user with read privileges only.
 - **SQLite connector:** used for the demo and for automated tests, so everything runs without an SAP tenant.
 
 ## Scenario format
@@ -136,7 +137,7 @@ The exit code makes it usable in CI or after a transport.
 2. Web app with login and workspaces: browse suites, run them, read reports. (done)
 3. NMBS demo workspace on synthetic SuccessFactors data, reachable only after login. (first version: `testbench web seed-demo`)
 4. Skill that translates a business requirement into a scenario file. (done: `.claude/skills/write-scenario`)
-5. Datasphere connector, tested against a trial tenant.
+5. Datasphere connector. (built and tested against a simulated driver; still to verify on a real tenant)
 
 ## Open questions
 

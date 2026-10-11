@@ -27,6 +27,7 @@ testbench = "testbench.cli:main"
 
 [project.entry-points."testbench.connectors"]
 sqlite = "testbench.connectors.sqlite:SQLiteConnector"
+datasphere = "testbench.connectors.datasphere:DatasphereConnector"
 
 [tool.setuptools.packages.find]
 where = ["src"]
