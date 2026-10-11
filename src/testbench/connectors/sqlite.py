@@ -1,18 +1,20 @@
-"""SQLite connector, used for the demo and for automated tests."""
+"""SQLite connector, used for automated tests. Never offered in the web app."""
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from testbench.connectors.base import ColumnInfo, ConnectorError, ObjectRef, ObjectSchema
+from testbench.lineage import LineageEdge, LineageGraph, LineageObject
 from testbench.table import Table
 
 
 class SQLiteConnector:
     name = "sqlite"
-    capabilities = frozenset({"sql", "metadata"})
+    capabilities = frozenset({"sql", "metadata", "lineage"})
 
     def __init__(self, path: str, base_dir: Path | None = None, **_: Any) -> None:
         db_path = Path(path)
@@ -55,6 +57,28 @@ class SQLiteConnector:
             raise ConnectorError(str(exc)) from exc
         columns = [d[0] for d in cursor.description or []]
         return Table(columns=columns, rows=cursor.fetchall())
+
+    def lineage(self, scope: list[str] | None = None) -> tuple[LineageGraph, list[str]]:
+        """SQLite keeps no dependency catalog: a view depends on the objects its SQL names."""
+        graph = LineageGraph()
+        rows = self.query(
+            "SELECT name, type, sql FROM sqlite_master WHERE type IN ('table', 'view') "
+            "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        ).rows
+        for name, kind, sql in rows:
+            columns = [
+                f"{row[1]} {row[2] or ''}".strip()
+                for row in self.query(f'PRAGMA table_info("{name}")').rows
+            ]
+            definition = sql if kind == "view" else ""
+            graph.add(LineageObject("main", name, kind, columns, definition))
+        for obj in graph.objects.values():
+            for other in graph.objects.values():
+                if other is not obj and re.search(
+                    rf"\b{re.escape(other.name)}\b", obj.definition, re.IGNORECASE
+                ):
+                    graph.edges.append(LineageEdge(source=other.key, target=obj.key))
+        return graph, ["main"]
 
     def close(self) -> None:
         if self._conn is not None:

@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from testbench.config import ConnectionConfig, ProjectConfig
+from testbench.connectors import create_connector
+from testbench.lineage import LineageDiff, LineageSnapshot, LineageStore, capture, compare
 from testbench.report import write_report
 from testbench.runner import Runner, RunResult, save_run
 from testbench.scenario import Scenario, Suite, list_suites, load_suite
@@ -127,3 +129,40 @@ class WorkspaceFiles:
                 )
             )
         return summaries
+
+    # Lineage -------------------------------------------------------------------
+
+    def lineage_store(self) -> LineageStore:
+        return LineageStore(self.root / ".testbench")
+
+    def capture_lineage(self, connection_name: str) -> LineageSnapshot:
+        config = self.config()
+        cfg = config.connection(connection_name)
+        secrets = self.store.secrets_for(self.workspace).get(connection_name, {})
+        connector = create_connector(cfg.type, {**cfg.resolved_settings(), **secrets})
+        try:
+            snapshot = capture(connector, connection_name)
+        finally:
+            connector.close()
+        with workspace_lock(self.workspace):
+            self.lineage_store().save(snapshot)
+        return snapshot
+
+    def lineage(
+        self, connection_name: str, snapshot_id: str | None = None
+    ) -> tuple[LineageSnapshot, LineageDiff] | None:
+        store = self.lineage_store()
+        if snapshot_id:
+            snapshot = store.load(connection_name, snapshot_id)
+            if snapshot is None:
+                raise NotFound(snapshot_id)
+        else:
+            snapshot = store.latest(connection_name)
+            if snapshot is None:
+                return None
+        try:
+            suites = self.suites()
+        except Exception:  # a broken scenario file must not hide the lineage
+            suites = []
+        previous = store.previous(connection_name, snapshot.id)
+        return snapshot, compare(previous, snapshot, suites)

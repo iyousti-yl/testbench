@@ -100,3 +100,13 @@ details.help { border: 1px solid var(--border); border-radius: 10px; padding: 8p
 details.help summary { cursor: pointer; font-weight: 600; }
 details.help td { vertical-align: top; }
 button[disabled] { opacity: .5; cursor: not-allowed; }
+ul.plain { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-direction: column; gap: 6px; }
+pre.diff { white-space: pre; max-height: 420px; overflow: auto; margin: 8px 0 0; }
+pre.diff .add, pre.diff .del { display: inline-block; min-width: 100%; }
+pre.diff .add { color: var(--ok); background: var(--ok-bg); }
+pre.diff .del { color: var(--bad); background: var(--bad-bg); }
+pre.diff .hunk { color: var(--muted); }
+tr:has(+ tr.sub) td { border-bottom: none; }
+tr.sub td { padding-top: 0; }
+tr.sub details summary { cursor: pointer; color: var(--brand); font-size: 13px; }
+h3.spaced { margin-top: 16px; }

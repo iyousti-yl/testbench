@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}Lineage · {{ view.connection.name }} · Testbench{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a> / Lineage</nav>
+<div class="row">
+  <div>
+    <h1>Lineage of {{ view.connection.name }} <span class="muted type">{{ view.title }}</span></h1>
+    {% if snapshot %}<p class="muted lead">{{ snapshot.scope | join(", ") }} · captured {{ snapshot.captured_at | when }} · {{ snapshot.graph.objects.values() | rejectattr("kind", "equalto", "external") | list | length }} objects · {{ snapshot.graph.edges | length }} dependencies</p>{% endif %}
+  </div>
+  <form method="post" action="/w/{{ workspace.slug }}/connections/{{ view.connection.id }}/lineage">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">{{ "Update lineage" if snapshot else "Map lineage" }}</button>
+  </form>
+</div>
+
+{% if not snapshot %}
+<section class="card"><p class="muted">No lineage yet. Map it to see every object of this connection and which object reads which.</p></section>
+{% else %}
+<section class="card">
+  <h2>Changes</h2>
+  {% if diff.first %}
+  <p class="muted">This is the first lineage of this connection. The next one lists every object that was added, changed or removed since now.</p>
+  {% elif not diff.changes and not diff.edges_added and not diff.edges_removed %}
+  <p>Nothing changed since {{ diff.previous.captured_at | when }}.</p>
+  {% else %}
+  <p class="muted">Since {{ diff.previous.captured_at | when }}: {% for status, n in diff.counts() %}{{ n }} {{ status }}{% if not loop.last %}, {% endif %}{% else %}only dependencies changed{% endfor %}{% if diff.scenarios() %}. {{ diff.scenarios() | length }} {{ "scenario reads" if diff.scenarios() | length == 1 else "scenarios read" }} the affected objects: re-run {{ "it" if diff.scenarios() | length == 1 else "them" }}{% endif %}.</p>
+  <table>
+    <thead><tr><th>Object</th><th>Change</th><th>What changed</th><th>Impacts</th><th>Scenarios to re-run</th></tr></thead>
+    <tbody>
+    {% for c in diff.changes %}
+    <tr>
+      <td><strong>{{ c.key }}</strong><br><span class="muted small">{{ c.kind }}</span></td>
+      <td><span class="badge {{ {'added': 'passed', 'changed': 'error', 'removed': 'failed'}[c.status] }}">{{ c.status | capitalize }}</span></td>
+      <td>{{ c.details | join("; ") }}</td>
+      <td>{{ c.impacted | join(", ") or "Nothing reads it" }}</td>
+      <td>{% for s in c.scenarios %}{% set parts = s.split("/") %}<a href="/w/{{ workspace.slug }}/suites/{{ parts[0] }}/scenarios/{{ parts[1] }}">{{ s }}</a>{% if not loop.last %}, {% endif %}{% else %}<span class="muted">None</span>{% endfor %}</td>
+    </tr>
+    {% if c.definition_diff %}
+    <tr class="sub"><td colspan="5"><details><summary>Definition of {{ c.key }}: what changed</summary><pre class="diff">{% for line in c.definition_diff.splitlines() %}<span class="{{ 'add' if line.startswith('+') and not line.startswith('+++') else 'del' if line.startswith('-') and not line.startswith('---') else 'hunk' if line.startswith('@@') else '' }}">{{ line }}</span>
+{% endfor %}</pre></details></td></tr>
+    {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if diff.edges_added or diff.edges_removed %}
+  <h3 class="spaced">Dependencies</h3>
+  <ul class="plain">
+    {% for e in diff.edges_added %}<li><span class="badge passed">New</span> {{ e.target }} reads {{ e.source }}</li>{% endfor %}
+    {% for e in diff.edges_removed %}<li><span class="badge failed">Gone</span> {{ e.target }} no longer reads {{ e.source }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Objects</h2>
+  <table>
+    <thead><tr><th>Object</th><th>Type</th><th>Columns</th><th>Reads from</th><th>Used by</th></tr></thead>
+    <tbody>
+    {% for key, o in snapshot.graph.objects | dictsort %}
+    <tr>
+      <td>{{ o.name }}<br><span class="muted small">{{ o.schema }}</span></td>
+      <td>{{ o.kind }}</td>
+      <td>{{ o.columns | length or "" }}</td>
+      <td>{{ snapshot.graph.upstream(key) | join(", ") }}</td>
+      <td>{{ snapshot.graph.downstream(key) | join(", ") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if history | length > 1 %}
+<section class="card">
+  <h2>Earlier lineages</h2>
+  <ul class="plain">
+    {% for id in history %}<li>{% if id == snapshot.id %}{{ id | snapshot_when }} (shown){% else %}<a href="/w/{{ workspace.slug }}/lineage/{{ view.connection.name }}?snapshot={{ id }}">{{ id | snapshot_when }}</a>{% endif %}</li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

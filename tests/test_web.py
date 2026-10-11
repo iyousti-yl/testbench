@@ -385,3 +385,52 @@ def test_first_account_can_be_created_on_every_start(tmp_path: Path, monkeypatch
     assert main(command) == 0
     assert "already exists" in capsys.readouterr().out
     assert main(command[:-1]) == 2  # without --if-missing a duplicate is an error
+
+
+def test_lineage_in_the_app(alice: TestClient, app, tmp_path: Path) -> None:
+    from conftest import break_target
+
+    store = app.state.store
+    workspace = store.workspace_for(store.user_by_email("alice@client-a.test"), "client-a-hr")
+    data = build_project(tmp_path / "lineage-data")
+    folder = store.workspace_dir(workspace)
+    shutil.rmtree(folder / "suites")
+    shutil.copytree(FIXTURES / "suites", folder / "suites")
+    target = store.save_connection(
+        workspace, "target", "sqlite", {"path": str(data / "target.db")}, {}, sensitive=True
+    )
+    page = alice.get("/w/client-a-hr").text
+    assert "Map lineage" in page
+    assert "No lineage yet" in alice.get("/w/client-a-hr/lineage/target").text
+
+    response = post(alice, f"/w/client-a-hr/connections/{target.id}/lineage")
+    assert response.headers["location"] == "/w/client-a-hr/lineage/target"
+    assert "first lineage" in alice.get("/w/client-a-hr/lineage/target").text
+
+    break_target(data)
+    post(alice, f"/w/client-a-hr/connections/{target.id}/lineage")
+    page = alice.get("/w/client-a-hr/lineage/target").text
+    assert "main.HR_COST_LINES_V" in page and "definition changed" in page
+    assert "/w/client-a-hr/suites/contracts/scenarios/cost-lines-unchanged" in page
+    assert "Earlier lineages" in page
+    assert "Update lineage" in alice.get("/w/client-a-hr").text
+
+    bob = client_for(app, "bob@client-b.test")
+    assert bob.get("/w/client-a-hr/lineage/target").status_code == 404
+    assert alice.get("/w/client-a-hr/lineage/target?snapshot=../../x").status_code == 404
+    assert alice.get("/w/client-a-hr/lineage/nope").status_code == 404
+
+
+def test_lineage_is_only_offered_where_the_connector_has_it(alice: TestClient, app) -> None:
+    store = app.state.store
+    workspace = store.workspace_for(store.user_by_email("alice@client-a.test"), "client-a-hr")
+    sf = store.save_connection(
+        workspace,
+        "sf",
+        "successfactors",
+        {"api_url": "https://api55.sapsf.eu", "company_id": "C", "auth": "basic", "username": "u"},
+        {"password": "p"},
+        sensitive=True,
+    )
+    assert "Map lineage" not in alice.get("/w/client-a-hr").text
+    assert post(alice, f"/w/client-a-hr/connections/{sf.id}/lineage").status_code == 404
