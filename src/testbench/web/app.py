@@ -26,8 +26,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from testbench.checks import ERROR, FAILED, PASSED, SKIPPED
 from testbench.config import ConfigError
 from testbench.connectors import ConnectorError
-from testbench.scenario import ScenarioError
+from testbench.scenario import ScenarioError, list_suites
 from testbench.web import connections as conn_forms
+from testbench.web.scenarios import ScenarioFiles, ScenarioForm, build_document
 from testbench.web.security import SecretBox, csrf_matches, new_csrf_token
 from testbench.web.store import Connection, Store, StoreError, User, Workspace
 from testbench.web.workspaces import NotFound, WorkspaceFiles, workspace_lock
@@ -523,18 +524,23 @@ def create_app(
         suite: str,
         csrf: Annotated[str, Form()],
         mode: Annotated[str, Form()] = "run",
+        scenario: Annotated[str, Form()] = "",
     ) -> Response:
         require_csrf(request, csrf)
         if mode not in ("run", "baseline"):
             raise HTTPException(status_code=400, detail="Unknown run mode.")
         ws = WorkspaceFiles(store, workspace)
+        back = f"/w/{workspace.slug}"
         try:
-            ws.run(suite, mode)
+            if scenario:  # one scenario only, for example right after editing it
+                ws.scenario(suite, scenario)
+                back = f"/w/{workspace.slug}/suites/{suite}/scenarios/{scenario}"
+            ws.run(suite, mode, scenarios=[scenario] if scenario else None)
         except NotFound as exc:
             raise HTTPException(status_code=404) from exc
         except (ConfigError, ScenarioError, ConnectorError) as exc:
             flash(request, f"The suite could not run: {exc}", "error")
-            return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
+            return RedirectResponse(back, status_code=303)
         latest = ws.runs(limit=1)[0]
         return RedirectResponse(f"/w/{workspace.slug}/runs/{latest.id}", status_code=303)
 
@@ -578,6 +584,143 @@ def create_app(
             scenario=scenario,
             source=source,
         )
+
+    # Scenario editor -----------------------------------------------------------
+
+    def scenario_editor(
+        request: Request,
+        user: User,
+        workspace: Workspace,
+        form: ScenarioForm,
+        scenario_id: str | None = None,
+        error: str | None = None,
+    ) -> HTMLResponse:
+        files_ = WorkspaceFiles(store, workspace)
+        return render(
+            request,
+            "scenario_form.html",
+            user=user,
+            workspace=workspace,
+            form=form,
+            scenario_id=scenario_id,
+            suites=list_suites(files_.root / "suites"),
+            connections=[conn_forms.view(c) for c in store.connections(workspace)],
+            errors=error.splitlines() if error else [],
+            status_code=400 if error else 200,
+        )
+
+    def connections_by_name(workspace: Workspace) -> dict[str, Connection]:
+        return {c.name: c for c in store.connections(workspace)}
+
+    def existing_scenario(workspace: Workspace, suite: str, scenario_id: str) -> None:
+        try:
+            WorkspaceFiles(store, workspace).scenario(suite, scenario_id)
+        except NotFound as exc:
+            raise HTTPException(status_code=404) from exc
+
+    @app.get("/w/{slug}/scenarios/new", response_class=HTMLResponse)
+    def new_scenario(
+        request: Request, user: CurrentUser, workspace: MemberWorkspace, suite: str = ""
+    ) -> HTMLResponse:
+        connections = store.connections(workspace)
+        form = ScenarioForm(suite=suite, connection=connections[0].name if connections else "")
+        return scenario_editor(request, user, workspace, form)
+
+    @app.post("/w/{slug}/scenarios/new", response_model=None)
+    def create_scenario(
+        request: Request, user: CurrentUser, workspace: MemberWorkspace, fields: FormFields
+    ) -> Response:
+        require_csrf(request, fields.get("csrf", ""))
+        form = ScenarioForm.from_post(fields)
+        scenario_files = ScenarioFiles(store.workspace_dir(workspace))
+        try:
+            document = build_document(form, connections_by_name(workspace))
+            with workspace_lock(workspace):
+                suite, scenario_id = scenario_files.create(form, document)
+        except ScenarioError as exc:
+            return scenario_editor(request, user, workspace, form, error=str(exc))
+        flash(request, "Saved the scenario. Run it to see the result.")
+        return RedirectResponse(
+            f"/w/{workspace.slug}/suites/{suite}/scenarios/{scenario_id}", status_code=303
+        )
+
+    @app.get("/w/{slug}/suites/{suite}/scenarios/{scenario_id}/edit", response_class=HTMLResponse)
+    def edit_scenario(
+        request: Request,
+        user: CurrentUser,
+        workspace: MemberWorkspace,
+        suite: str,
+        scenario_id: str,
+    ) -> HTMLResponse:
+        existing_scenario(workspace, suite, scenario_id)
+        raw, default_connection = ScenarioFiles(store.workspace_dir(workspace)).document(
+            suite, scenario_id
+        )
+        form = ScenarioForm.from_document(raw, suite, default_connection)
+        return scenario_editor(request, user, workspace, form, scenario_id)
+
+    @app.post("/w/{slug}/suites/{suite}/scenarios/{scenario_id}/edit", response_model=None)
+    def update_scenario(
+        request: Request,
+        user: CurrentUser,
+        workspace: MemberWorkspace,
+        suite: str,
+        scenario_id: str,
+        fields: FormFields,
+    ) -> Response:
+        require_csrf(request, fields.get("csrf", ""))
+        existing_scenario(workspace, suite, scenario_id)
+        form = ScenarioForm.from_post({**fields, "suite": suite})
+        try:
+            document = build_document(form, connections_by_name(workspace))
+            with workspace_lock(workspace):
+                ScenarioFiles(store.workspace_dir(workspace)).update(suite, scenario_id, document)
+        except ScenarioError as exc:
+            return scenario_editor(request, user, workspace, form, scenario_id, str(exc))
+        flash(request, "Saved the scenario.")
+        return RedirectResponse(
+            f"/w/{workspace.slug}/suites/{suite}/scenarios/{scenario_id}", status_code=303
+        )
+
+    @app.get("/w/{slug}/suites/{suite}/scenarios/{scenario_id}/delete", response_class=HTMLResponse)
+    def confirm_delete_scenario(
+        request: Request,
+        user: CurrentUser,
+        workspace: MemberWorkspace,
+        suite: str,
+        scenario_id: str,
+    ) -> HTMLResponse:
+        try:
+            scenario, _ = WorkspaceFiles(store, workspace).scenario(suite, scenario_id)
+        except NotFound as exc:
+            raise HTTPException(status_code=404) from exc
+        return render(
+            request,
+            "delete_scenario.html",
+            user=user,
+            workspace=workspace,
+            suite=suite,
+            scenario=scenario,
+        )
+
+    @app.post("/w/{slug}/suites/{suite}/scenarios/{scenario_id}/delete", response_model=None)
+    def delete_scenario(
+        request: Request,
+        user: CurrentUser,
+        workspace: MemberWorkspace,
+        suite: str,
+        scenario_id: str,
+        csrf: Annotated[str, Form()],
+    ) -> Response:
+        require_csrf(request, csrf)
+        existing_scenario(workspace, suite, scenario_id)
+        with workspace_lock(workspace):
+            suite_removed = ScenarioFiles(store.workspace_dir(workspace)).delete(suite, scenario_id)
+        message = "Deleted the scenario and its baselines."
+        if suite_removed:
+            message += f" Suite {suite} was empty and is removed too."
+        flash(request, message)
+        return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
 
     return app
 

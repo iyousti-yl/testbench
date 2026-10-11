@@ -93,6 +93,39 @@ def break_target(folder: Path, broken: bool = True) -> None:
 
 
 @pytest.fixture
+def app(tmp_path: Path):
+    """The web app with two clients' workspaces: Alice owns A (Carol is a member), Bob owns B."""
+    pytest.importorskip("fastapi")
+    from webhelpers import PASSWORD, SECRET
+
+    from testbench.web.app import create_app
+
+    app = create_app(tmp_path / "data", SECRET, secure_cookies=False)
+    store = app.state.store
+    alice = store.create_user("alice@client-a.test", "Alice", PASSWORD)
+    bob = store.create_user("bob@client-b.test", "Bob", PASSWORD)
+    store.create_user("carol@client-a.test", "Carol", PASSWORD)
+    store.create_workspace(alice, "Client A · HR")
+    store.create_workspace(bob, "Client B")
+    store.add_member("client-a-hr", "carol@client-a.test", "member")
+    return app
+
+
+@pytest.fixture
+def alice(app):
+    from webhelpers import client_for
+
+    return client_for(app, "alice@client-a.test")
+
+
+@pytest.fixture
+def carol(app):
+    from webhelpers import client_for
+
+    return client_for(app, "carol@client-a.test")
+
+
+@pytest.fixture
 def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     folder = build_project(tmp_path / "project")
     monkeypatch.chdir(folder)
