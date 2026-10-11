@@ -1,9 +1,9 @@
-# Hosted demo on Render (free plan). Synthetic data only: never connect a client system here.
-# The free plan sleeps after inactivity and has no persistent disk, so the demo is
-# re-seeded on every start and earlier runs disappear.
+# Testbench on Render (free plan). Synthetic or sandbox data only: never a client's
+# production tenant. The free plan sleeps after inactivity and has no persistent disk, so
+# workspaces and runs disappear on every restart.
 services:
   - type: web
-    name: testbench-demo
+    name: testbench
     runtime: docker
     plan: free
     region: frankfurt
@@ -13,7 +13,7 @@ services:
     envVars:
       - key: TESTBENCH_SECRET_KEY
         generateValue: true
-      - key: TESTBENCH_DEMO_PASSWORD_NMBS
-        generateValue: true
-      - key: TESTBENCH_DEMO_PASSWORD_OTHER
-        generateValue: true
+      - key: TESTBENCH_ADMIN_EMAIL
+        sync: false
+      - key: TESTBENCH_ADMIN_PASSWORD
+        sync: false

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ cls.title }} connection · Testbench{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a></nav>
+<section class="card form-card">
+  <h1>{{ "Edit" if connection else "Connect to" }} {{ cls.title }}</h1>
+  {% if cls.description %}<p class="muted">{{ cls.description }}</p>{% endif %}
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+  <form method="post" action="/w/{{ workspace.slug }}/connections/{{ connection.id if connection else 'new/' ~ type_name }}" class="stack" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Connection name
+      <input name="name" value="{{ values.name or '' }}" maxlength="40" required>
+      <span class="hint">Scenarios refer to the connection by this name, for example {{ type_name }}-dev.</span>
+    </label>
+    {% for group, fields in groups %}
+    {% if group %}<fieldset><legend>{{ group }}</legend>{% endif %}
+      {% for f in fields %}
+      {% set input_name = prefix ~ f.key %}
+      {% set stored = connection and f.secret and f.key in connection.secret_keys %}
+      <label>{{ f.label }}{% if not f.required and not f.secret and not group %} <span class="hint">Optional</span>{% endif %}
+        {% if f.kind == "choice" %}
+        <select name="{{ input_name }}">
+          {% for value, label in f.choices %}<option value="{{ value }}"{% if values.get(input_name) == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        {% elif f.kind == "textarea" %}
+        <textarea name="{{ input_name }}" rows="5" spellcheck="false" placeholder="{{ 'Stored and encrypted. Leave empty to keep it.' if stored else f.placeholder }}">{{ '' if f.secret else values.get(input_name, '') }}</textarea>
+        {% elif f.secret %}
+        <input type="password" name="{{ input_name }}" autocomplete="new-password" placeholder="{{ 'Stored and encrypted. Leave empty to keep it.' if stored else f.placeholder }}"{% if f.required and not stored %} required{% endif %}>
+        {% else %}
+        <input type="{{ 'url' if f.kind == 'url' else 'text' }}" name="{{ input_name }}" value="{{ values.get(input_name, '') }}" placeholder="{{ f.placeholder }}"{% if f.required %} required{% endif %}>
+        {% endif %}
+        {% if f.help %}<span class="hint">{{ f.help }}</span>{% endif %}
+      </label>
+      {% endfor %}
+    {% if group %}</fieldset>{% endif %}
+    {% endfor %}
+    <label class="check">
+      <input type="checkbox" name="sensitive"{% if values.get("sensitive") == "on" %} checked{% endif %}>
+      <span>Contains personal data <span class="hint">Baselines keep only hashes and totals, never values.</span></span>
+    </label>
+    <p class="muted small">Passwords and keys are encrypted and never shown again. Testbench only reads: give the user read-only permissions.</p>
+    <div class="actions">
+      <button type="submit">Save and test</button>
+      <a class="button secondary" href="/w/{{ workspace.slug }}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

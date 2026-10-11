@@ -24,6 +24,12 @@ class ConnectionConfig:
     type: str
     sensitive: bool = False
     settings: dict[str, Any] = field(default_factory=dict)
+    # ${VAR} references are expanded only for settings an operator wrote in testbench.yaml,
+    # never for values typed into the web app (they could read the server's environment).
+    env_vars: bool = True
+
+    def resolved_settings(self) -> dict[str, Any]:
+        return expand_env(self.settings) if self.env_vars else dict(self.settings)
 
 
 @dataclass

@@ -1,6 +1,6 @@
 # Testbench design note (v1)
 
-Status: agreed direction, updated with milestone 1 · 2026-10-11 · "Testbench" is a working name.
+Status: agreed direction, updated with milestone 3 · 2026-10-11 · "Testbench" is a working name.
 
 ## Goal
 
@@ -10,8 +10,8 @@ Let SAP data consultants define business test scenarios in plain, readable files
 
 | Concept | Meaning |
 | --- | --- |
-| Connector | A plug-in that talks to one kind of system (Datasphere, SQLite, Postgres, later BW/4HANA, SAC, CPI). |
-| Connection | A configured instance of a connector (host, user, space). Secrets come from environment variables, never from files in the repo. |
+| Connector | A plug-in that talks to one kind of system (SAP Datasphere and SAP SuccessFactors today; later BW/4HANA, SAC, CPI). |
+| Connection | A configured instance of a connector (tenant, space, user). In the web app it belongs to a workspace and its secrets are stored encrypted; on the command line secrets come from environment variables. Never from files in the repo. |
 | Suite | A folder of scenarios that belong together, for example `nmbs-hr-integration`. |
 | Scenario | One business case to test, written in YAML. |
 | Check | One verifiable expectation inside a scenario. |
@@ -24,21 +24,23 @@ Every connector implements the same small interface, so adding a system never to
 
 ```python
 class Connector(Protocol):
-    name: str  # "datasphere", "sqlite", ...
-    capabilities: set[str]  # {"sql", "metadata", "write"}
+    name: str  # "datasphere", "successfactors", ...
+    capabilities: set[str]  # {"sql" or "odata", "metadata"}
 
     def test_connection(self) -> None: ...
     def list_objects(self, scope: str | None = None) -> list[ObjectRef]: ...
     def describe(self, obj: ObjectRef) -> ObjectSchema: ...  # columns, types, keys
-    def query(self, sql: str, params: dict | None = None) -> Table: ...
+    def query(self, query: str, params: dict | None = None) -> Table: ...  # SQL or OData path
     def close(self) -> None: ...
 ```
 
 - `Table` is a light in-memory table (columns + rows) so the core does not depend on any one database library.
 - Connectors are discovered through Python entry points (`testbench.connectors`), so a connector can also ship as a separate package later.
-- **Datasphere connector:** SQL over the HANA protocol (`hdbcli`, TLS only) using a space's database user with read access. It reads the views the space exposes for consumption; `schema` (the space id) becomes the current schema so scenarios can use unqualified view names. Object metadata comes from `SYS.VIEWS`, `SYS.TABLES` and their column views. The Datasphere CLI is an optional extra for later.
-- **Read-only guard:** the runner refuses any statement that is not a single `SELECT` (or `WITH`) before it reaches a connector. This prevents mistakes; the real protection is a database user with read privileges only.
-- **SQLite connector:** used for the demo and for automated tests, so everything runs without an SAP tenant.
+- **Offered in the web app** when the connector also declares `title`, `description` and `settings_fields` (a list of `SettingField`: label, help, whether it is secret, whether it is shown on the connection card), and optionally `check_settings(settings)` to validate and normalise what was typed. The web app builds its forms and connection cards from these, so it contains no connector-specific code. Today that list is SAP Datasphere and SAP SuccessFactors.
+- **Datasphere connector:** SQL over the HANA protocol (`hdbcli`, TLS only) using a space's database user with read access. It reads the views the space exposes for consumption; `space` becomes the current schema so scenarios can use unqualified view names. Object metadata comes from `SYS.VIEWS`, `SYS.TABLES` and their column views. Settings: tenant URL (shown, not used to connect), space ID, database host, user and password.
+- **SuccessFactors connector:** OData v2 over HTTPS with only GET requests. A query is an OData path such as `EmpJob?$select=userId,startDate&$filter=...`; only `$select`, `$filter`, `$expand`, `$orderby`, `$top`, `$skip`, `fromDate`, `toDate` and `asOfDate` are accepted. Pages are followed through `__next` (same host only), values are converted with the entity's `$metadata` types (dates, decimals, integers), and expanded navigation properties become `nav/field` columns. `describe` returns the `sap:label` business names. Authentication is OAuth 2.0 with a SAML bearer assertion that Testbench signs locally (RSA-SHA256, exclusive canonical XML), or basic authentication while SAP still allows it.
+- **Read-only guard:** for SQL connectors the runner refuses any statement that is not a single `SELECT` (or `WITH`) before it reaches the connector. This prevents mistakes; the real protection is a database user with read privileges only. OData connectors only send GET requests.
+- **SQLite connector:** used for automated tests only, so everything runs without an SAP tenant. It is never offered in the web app, because it would let a user read files on the server.
 
 ## Scenario format
 
@@ -99,8 +101,9 @@ Data security is a top priority: clients will connect HR and finance data. The r
 
 - **Workspaces isolate clients.** Every client case (NMBS first) lives in its own workspace with its own connections, scenarios, baselines and reports. In the web app, access is checked on the server for every request, and a user only sees workspaces they are a member of. There is no global view across workspaces.
 - **Login is required** for the web app. No page or API returns workspace data to an anonymous request.
-- **Credentials** are never stored in scenario files or the repository. The CLI reads them from environment variables (`${VAR}` in `testbench.yaml`); the web app will store them encrypted and never show them back.
-- **Read-only access.** Connectors only read. The SQLite connector opens databases read-only; the Datasphere connector will use a database user with read privileges only.
+- **Credentials** are never stored in scenario files or the repository. The CLI reads them from environment variables (`${VAR}` in `testbench.yaml`); the web app stores them encrypted, never shows them back, and keeps a stored password when a form leaves it empty. Values typed into the web app are never expanded as `${VAR}`, so a form cannot read the server's environment.
+- **Connections only reach SAP.** In the web app, Datasphere connections must use a SAP HANA Cloud host (`*.hanacloud.ondemand.com`) and SuccessFactors connections a SuccessFactors API server, so a connection form cannot be used to reach other hosts from the server. The SuccessFactors connector never follows redirects and refuses next-page links to another host.
+- **Read-only access.** Connectors only read. The SQLite connector opens databases read-only; the Datasphere connector uses a database user with read privileges only; the SuccessFactors connector only sends GET requests.
 - **Hash-mode baselines.** For connections marked `sensitive: true`, baselines store one hash per row and totals per numeric column, so regressions are detected without keeping personal data. Reports of failing checks do show sample rows (up to 20), because a report must show what broke; they are stored inside the workspace and protected by the same access control.
 - **Synthetic data only** in development, tests and demos. Real client data never enters the repository.
 
@@ -108,36 +111,39 @@ Data security is a top priority: clients will connect HR and finance data. The r
 
 A FastAPI app with server-rendered pages and no JavaScript (`testbench web serve`).
 
-- **Data layout:** `TESTBENCH_DATA_DIR/app.db` holds users, workspaces, memberships and encrypted secrets. Each workspace has its own folder (`workspaces/<id>/`) with the same layout as a CLI project, so the engine runs unchanged.
-- **Access control:** every workspace route resolves the workspace with a query that joins the signed-in user's memberships. A workspace the user is not a member of answers 404, exactly like one that does not exist.
+- **Data layout:** `TESTBENCH_DATA_DIR/app.db` holds users, workspaces, memberships, connections and their encrypted secrets (schema versioned with `PRAGMA user_version`). Each workspace has its own folder (`workspaces/<id>/`) with `suites/` and `.testbench/` (baselines and runs); the runner gets its connections from the database, so the engine runs unchanged.
+- **Workspaces:** any signed-in user can create one and becomes its owner. The id in links is derived from the name once and never changes on rename, and an id whose folder still exists on disk is never reused. Deleting asks to type the id, removes the folder first and then the database rows, so no data is left behind for a later workspace.
+- **Roles:** members can open a workspace, run suites and test connections. Only owners rename or delete the workspace and add, edit or delete connections (403 for members).
+- **Access control:** every workspace route resolves the workspace with a query that joins the signed-in user's memberships, and every connection lookup is scoped to that workspace. A workspace the user is not a member of answers 404, exactly like one that does not exist.
 - **Sessions:** signed, HTTP-only, SameSite=Lax cookies, valid 8 hours; a new session on every login; CSRF tokens on every form; 5 failed logins lock an email address for 15 minutes.
 - **Passwords:** scrypt hashes; at least 12 characters.
 - **Connection secrets:** encrypted with a key derived from `TESTBENCH_SECRET_KEY`, passed to the runner only at run time, never rendered.
 - **Headers:** a strict Content-Security-Policy (no scripts at all), no framing, `nosniff`, `no-store` caching. Reports are served with their own CSP and shown in a sandboxed frame.
-- **Accounts** are created by an administrator on the command line for now. Self-service invitations and single sign-on (Microsoft Entra ID or SAP Cloud Identity) come later.
+- **Accounts** are created by an administrator on the command line for now (`testbench web create-user`, `add-member`). Self-service invitations and single sign-on (Microsoft Entra ID or SAP Cloud Identity) come later.
 
 ## Command line
 
 ```
-testbench init [dir]               # create an example project with synthetic demo data
+testbench init [dir]               # create an empty project with connection templates
 testbench connections              # test every configured connection
-testbench objects <connection>     # list tables and views (add --columns for columns)
+testbench objects <connection>     # list tables, views or entities (--match text, --columns)
 testbench validate [suite]         # check scenario files against the schema
 testbench list                     # list suites and scenarios
 testbench baseline <suite>         # capture or refresh baselines
 testbench run <suite> [--tag x]    # run checks, write an HTML report, exit 1 on failure
-testbench demo break|fix           # inject or remove defects in the demo data
 ```
 
 The exit code makes it usable in CI or after a transport.
 
 ## Milestones
 
-1. Core engine, scenario schema, SQLite connector, HTML report, synthetic HR demo suite. (done)
+1. Core engine, scenario schema, SQLite connector, HTML report. (done)
 2. Web app with login and workspaces: browse suites, run them, read reports. (done)
-3. NMBS demo workspace on synthetic SuccessFactors data, reachable only after login. (first version: `testbench web seed-demo`)
+3. Workspaces and connections managed in the app, with no built-in demo data. (done)
 4. Skill that translates a business requirement into a scenario file. (done: `.claude/skills/write-scenario`)
-5. Datasphere connector. (built and tested against a simulated driver; still to verify on a real tenant)
+5. Datasphere and SuccessFactors connectors. (built and tested against simulated systems; still to verify on a real tenant)
+6. Create, edit and delete test scenarios in the app. (next)
+7. Lineage of the tenant's objects, with change detection between runs. (planned)
 
 ## Open questions
 

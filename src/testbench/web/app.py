@@ -1,7 +1,8 @@
-"""The Testbench web app: login, workspaces, suites, runs and reports.
+"""The Testbench web app: login, workspaces, connections, suites, runs and reports.
 
 Every workspace route resolves the workspace through the signed-in user's memberships.
 A workspace the user is not a member of answers 404, exactly like one that does not exist.
+Members can look and run tests; only owners change the workspace and its connections.
 """
 
 # No "from __future__ import annotations" here: FastAPI must see the real Annotated
@@ -16,19 +17,20 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from testbench import demo
 from testbench.checks import ERROR, FAILED, PASSED, SKIPPED
 from testbench.config import ConfigError
 from testbench.connectors import ConnectorError
 from testbench.scenario import ScenarioError
+from testbench.web import connections as conn_forms
 from testbench.web.security import SecretBox, csrf_matches, new_csrf_token
-from testbench.web.store import Store, User, Workspace
-from testbench.web.workspaces import NotFound, WorkspaceFiles
+from testbench.web.store import Connection, Store, StoreError, User, Workspace
+from testbench.web.workspaces import NotFound, WorkspaceFiles, workspace_lock
 
 SESSION_HOURS = 8
 MAX_LOGIN_FAILURES = 5
@@ -131,12 +133,15 @@ def create_app(
     def flash(request: Request, message: str, kind: str = "info") -> None:
         request.session.setdefault("flash", []).append({"kind": kind, "message": message})
 
-    def render(request: Request, template: str, **context: Any) -> HTMLResponse:
+    def render(
+        request: Request, template: str, status_code: int = 200, **context: Any
+    ) -> HTMLResponse:
         messages = request.session.pop("flash", [])
         return templates.TemplateResponse(
             request,
             template,
             {"csrf": csrf_token(request), "messages": messages, **context},
+            status_code=status_code,
         )
 
     def current_user(request: Request) -> User:
@@ -157,16 +162,52 @@ def create_app(
 
     MemberWorkspace = Annotated[Workspace, Depends(member_workspace)]
 
+    def owned_workspace(workspace: MemberWorkspace) -> Workspace:
+        if not workspace.is_owner:
+            message = "Only owners of this workspace can do this."
+            raise HTTPException(status_code=403, detail=message)
+        return workspace
+
+    OwnedWorkspace = Annotated[Workspace, Depends(owned_workspace)]
+
+    async def form_fields(request: Request) -> dict[str, str]:
+        form = await request.form()
+        return {k: v for k, v in form.items() if isinstance(v, str)}
+
+    FormFields = Annotated[dict[str, str], Depends(form_fields)]
+
+    def connector_type(type_name: str) -> type:
+        cls = conn_forms.offered_types().get(type_name)
+        if cls is None:
+            raise HTTPException(status_code=404)
+        return cls
+
+    def workspace_connection(workspace: Workspace, connection_id: int) -> Connection:
+        connection = store.connection(workspace, connection_id)
+        if connection is None:
+            raise HTTPException(status_code=404)
+        return connection
+
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException) -> Response:
         if exc.status_code == 303:
             return RedirectResponse(exc.headers["Location"], status_code=303)
-        message = exc.detail if exc.status_code == 400 else "This page does not exist."
+        message = exc.detail if exc.status_code in (400, 403) else "This page does not exist."
         return templates.TemplateResponse(
             request,
             "error.html",
             {"message": message, "user": None, "csrf": "", "messages": []},
             status_code=exc.status_code,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def bad_request(request: Request, exc: RequestValidationError) -> Response:
+        # Malformed ids in a URL look like any other page that does not exist.
+        return templates.TemplateResponse(
+            request,
+            "error.html",
+            {"message": "This page does not exist.", "user": None, "csrf": "", "messages": []},
+            status_code=404,
         )
 
     # Routes --------------------------------------------------------------------
@@ -210,29 +251,269 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request, user: CurrentUser) -> HTMLResponse:
-        return render(request, "home.html", user=user, workspaces=store.workspaces_for(user))
+        workspaces = [
+            (w, [conn_forms.view(c) for c in store.connections(w)])
+            for w in store.workspaces_for(user)
+        ]
+        return render(request, "home.html", user=user, workspaces=workspaces)
+
+    # Workspaces ----------------------------------------------------------------
+
+    @app.get("/workspaces/new", response_class=HTMLResponse)
+    def new_workspace(request: Request, user: CurrentUser) -> HTMLResponse:
+        return render(request, "workspace_form.html", user=user, workspace=None, values={})
+
+    @app.post("/workspaces", response_model=None)
+    def create_workspace(
+        request: Request,
+        user: CurrentUser,
+        csrf: Annotated[str, Form()],
+        name: Annotated[str, Form()] = "",
+        description: Annotated[str, Form()] = "",
+    ) -> Response:
+        require_csrf(request, csrf)
+        try:
+            workspace = store.create_workspace(user, name, description)
+        except StoreError as exc:
+            values = {"name": name, "description": description}
+            return render(
+                request,
+                "workspace_form.html",
+                user=user,
+                workspace=None,
+                values=values,
+                error=str(exc),
+                status_code=400,
+            )
+        flash(request, f"Created workspace {workspace.name}. Add a connection to get started.")
+        return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
 
     @app.get("/w/{slug}", response_class=HTMLResponse)
     def workspace_page(request: Request, user: CurrentUser, workspace: MemberWorkspace) -> Any:
         ws = WorkspaceFiles(store, workspace)
         error = None
         try:
-            config = ws.config()
             suites = ws.suites()
-            connections = list(config.connections.values())
         except (ConfigError, ScenarioError) as exc:
-            suites, connections, error = [], [], str(exc)
+            suites, error = [], str(exc)
         return render(
             request,
             "workspace.html",
             user=user,
             workspace=workspace,
+            connections=[conn_forms.view(c) for c in store.connections(workspace)],
+            connector_types=conn_forms.offered_types(),
             suites=suites,
-            connections=connections,
-            secret_names=store.secret_names(workspace),
             runs=ws.runs(),
             error=error,
         )
+
+    @app.get("/w/{slug}/edit", response_class=HTMLResponse)
+    def edit_workspace(request: Request, user: CurrentUser, workspace: OwnedWorkspace) -> Any:
+        values = {"name": workspace.name, "description": workspace.description}
+        return render(request, "workspace_form.html", user=user, workspace=workspace, values=values)
+
+    @app.post("/w/{slug}/edit", response_model=None)
+    def update_workspace(
+        request: Request,
+        user: CurrentUser,
+        workspace: OwnedWorkspace,
+        csrf: Annotated[str, Form()],
+        name: Annotated[str, Form()] = "",
+        description: Annotated[str, Form()] = "",
+    ) -> Response:
+        require_csrf(request, csrf)
+        try:
+            store.update_workspace(workspace, name, description)
+        except StoreError as exc:
+            values = {"name": name, "description": description}
+            return render(
+                request,
+                "workspace_form.html",
+                user=user,
+                workspace=workspace,
+                values=values,
+                error=str(exc),
+                status_code=400,
+            )
+        flash(request, "Saved the workspace.")
+        return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
+
+    @app.get("/w/{slug}/delete", response_class=HTMLResponse)
+    def confirm_delete_workspace(
+        request: Request, user: CurrentUser, workspace: OwnedWorkspace
+    ) -> HTMLResponse:
+        return render(request, "delete_workspace.html", user=user, workspace=workspace)
+
+    @app.post("/w/{slug}/delete", response_model=None)
+    def delete_workspace(
+        request: Request,
+        user: CurrentUser,
+        workspace: OwnedWorkspace,
+        csrf: Annotated[str, Form()],
+        confirm: Annotated[str, Form()] = "",
+    ) -> Response:
+        require_csrf(request, csrf)
+        if confirm.strip() != workspace.slug:
+            flash(request, f"Type {workspace.slug} to confirm.", "error")
+            return RedirectResponse(f"/w/{workspace.slug}/delete", status_code=303)
+        with workspace_lock(workspace):
+            store.delete_workspace(workspace)
+        flash(request, f"Deleted workspace {workspace.name} and all its data.")
+        return RedirectResponse("/", status_code=303)
+
+    # Connections ---------------------------------------------------------------
+
+    def connection_form(
+        request: Request,
+        user: User,
+        workspace: Workspace,
+        cls: type,
+        type_name: str,
+        connection: Connection | None,
+        values: dict[str, str],
+        error: str | None = None,
+    ) -> HTMLResponse:
+        return render(
+            request,
+            "connection_form.html",
+            user=user,
+            workspace=workspace,
+            cls=cls,
+            type_name=type_name,
+            groups=conn_forms.groups(cls),
+            connection=connection,
+            values=values,
+            prefix=conn_forms.FIELD_PREFIX,
+            error=error,
+            status_code=400 if error else 200,
+        )
+
+    def save_connection(
+        request: Request,
+        user: User,
+        workspace: Workspace,
+        type_name: str,
+        form: dict[str, str],
+        connection: Connection | None,
+    ) -> Response:
+        require_csrf(request, form.get("csrf", ""))
+        cls = connector_type(type_name)
+        stored = store.connection_secrets(connection) if connection else {}
+        try:
+            settings, secrets = conn_forms.read_form(cls, form, stored)
+            saved = store.save_connection(
+                workspace,
+                name=form.get("name", ""),
+                type_name=type_name,
+                settings=settings,
+                secrets=secrets,
+                sensitive=form.get("sensitive") == "on",
+                connection_id=connection.id if connection else None,
+            )
+        except (ConnectorError, StoreError) as exc:
+            values = {k: v for k, v in form.items() if k != "csrf"}
+            for field in cls.settings_fields:  # typed secrets are never echoed back
+                if field.secret:
+                    values.pop(conn_forms.FIELD_PREFIX + field.key, None)
+            return connection_form(
+                request, user, workspace, cls, type_name, connection, values, str(exc)
+            )
+        ok, message = conn_forms.check_connection(saved, secrets)
+        store.record_check(workspace, saved.id, ok, message)
+        if ok:
+            flash(request, f"Saved {saved.name}. {message}")
+        else:
+            flash(request, f"Saved {saved.name}, but it cannot connect yet. See below.", "error")
+        return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
+
+    @app.get("/w/{slug}/connections/new/{type_name}", response_class=HTMLResponse)
+    def new_connection(
+        request: Request, user: CurrentUser, workspace: OwnedWorkspace, type_name: str
+    ) -> HTMLResponse:
+        cls = connector_type(type_name)
+        taken = {c.name for c in store.connections(workspace)}
+        name = next(
+            n for n in [type_name, *(f"{type_name}-{i}" for i in range(2, 100))] if n not in taken
+        )
+        values = {"name": name, "sensitive": "on"}
+        values.update({conn_forms.FIELD_PREFIX + f.key: f.default for f in cls.settings_fields})
+        return connection_form(request, user, workspace, cls, type_name, None, values)
+
+    @app.post("/w/{slug}/connections/new/{type_name}", response_model=None)
+    def create_connection(
+        request: Request,
+        user: CurrentUser,
+        workspace: OwnedWorkspace,
+        type_name: str,
+        form: FormFields,
+    ) -> Response:
+        return save_connection(request, user, workspace, type_name, form, None)
+
+    @app.get("/w/{slug}/connections/{connection_id}", response_class=HTMLResponse)
+    def edit_connection(
+        request: Request, user: CurrentUser, workspace: OwnedWorkspace, connection_id: int
+    ) -> HTMLResponse:
+        connection = workspace_connection(workspace, connection_id)
+        cls = connector_type(connection.type)
+        values = {"name": connection.name, "sensitive": "on" if connection.sensitive else ""}
+        values.update({conn_forms.FIELD_PREFIX + k: str(v) for k, v in connection.settings.items()})
+        return connection_form(request, user, workspace, cls, connection.type, connection, values)
+
+    @app.post("/w/{slug}/connections/{connection_id}", response_model=None)
+    def update_connection(
+        request: Request,
+        user: CurrentUser,
+        workspace: OwnedWorkspace,
+        connection_id: int,
+        form: FormFields,
+    ) -> Response:
+        connection = workspace_connection(workspace, connection_id)
+        return save_connection(request, user, workspace, connection.type, form, connection)
+
+    @app.post("/w/{slug}/connections/{connection_id}/test", response_model=None)
+    def test_connection(
+        request: Request,
+        user: CurrentUser,
+        workspace: MemberWorkspace,
+        connection_id: int,
+        csrf: Annotated[str, Form()],
+    ) -> Response:
+        require_csrf(request, csrf)
+        connection = workspace_connection(workspace, connection_id)
+        ok, message = conn_forms.check_connection(connection, store.connection_secrets(connection))
+        store.record_check(workspace, connection.id, ok, message)
+        flash(request, f"{connection.name}: {message}", "info" if ok else "error")
+        return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
+
+    @app.get("/w/{slug}/connections/{connection_id}/delete", response_class=HTMLResponse)
+    def confirm_delete_connection(
+        request: Request, user: CurrentUser, workspace: OwnedWorkspace, connection_id: int
+    ) -> HTMLResponse:
+        connection = workspace_connection(workspace, connection_id)
+        return render(
+            request,
+            "delete_connection.html",
+            user=user,
+            workspace=workspace,
+            view=conn_forms.view(connection),
+        )
+
+    @app.post("/w/{slug}/connections/{connection_id}/delete", response_model=None)
+    def delete_connection(
+        request: Request,
+        user: CurrentUser,
+        workspace: OwnedWorkspace,
+        connection_id: int,
+        csrf: Annotated[str, Form()],
+    ) -> Response:
+        require_csrf(request, csrf)
+        connection = workspace_connection(workspace, connection_id)
+        store.delete_connection(workspace, connection.id)
+        flash(request, f"Deleted connection {connection.name} and its stored credentials.")
+        return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
+
+    # Suites and runs -----------------------------------------------------------
 
     @app.post("/w/{slug}/suites/{suite}/run")
     def run_suite(
@@ -297,24 +578,6 @@ def create_app(
             scenario=scenario,
             source=source,
         )
-
-    @app.post("/w/{slug}/demo/{action}")
-    def demo_action(
-        request: Request,
-        user: CurrentUser,
-        workspace: MemberWorkspace,
-        action: str,
-        csrf: Annotated[str, Form()],
-    ) -> Response:
-        require_csrf(request, csrf)
-        if not workspace.is_demo or action not in ("break", "fix"):
-            raise HTTPException(status_code=404)
-        demo.set_broken(store.workspace_dir(workspace), broken=action == "break")
-        if action == "break":
-            flash(request, "Injected a logic defect and a missing cost center into the demo data.")
-        else:
-            flash(request, "Restored the demo data.")
-        return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
 
     return app
 

@@ -1,16 +1,30 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block content %}
-<h1>Your workspaces</h1>
+<div class="row">
+  <h1>Your workspaces</h1>
+  <a class="button" href="/workspaces/new">New workspace</a>
+</div>
 {% if workspaces %}
 <div class="grid">
-  {% for w in workspaces %}
+  {% for w, connections in workspaces %}
   <a class="card tile-link" href="/w/{{ w.slug }}">
     <strong>{{ w.name }}</strong>
-    <span class="muted">{{ w.role }}{% if w.is_demo %} · demo data{% endif %}</span>
+    {% if w.description %}<span class="muted clamp">{{ w.description }}</span>{% endif %}
+    {% for view in connections %}
+    <span class="conn-line">{{ m.status(view.connection) }} {{ view.title }}{% for field, value in view.summary[:2] %} · {{ value | replace("https://", "") }}{% endfor %}</span>
+    {% else %}
+    <span class="muted">No connections yet</span>
+    {% endfor %}
+    <span class="muted small">{{ "Owner" if w.is_owner else "Member" }}</span>
   </a>
   {% endfor %}
 </div>
 {% else %}
-<p class="muted">You are not a member of any workspace yet. Ask a workspace owner to add you.</p>
+<section class="card empty">
+  <h2>No workspaces yet</h2>
+  <p class="muted">A workspace holds the connections, test scenarios and results for one client or project. Only its members can open it.</p>
+  <a class="button" href="/workspaces/new">Create your first workspace</a>
+</section>
 {% endif %}
 {% endblock %}

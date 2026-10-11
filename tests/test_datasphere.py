@@ -1,74 +1,13 @@
 """Datasphere connector tests against a fake HANA driver (no tenant needed)."""
 
 import sys
-import types
 from decimal import Decimal
 
 import pytest
 
 from testbench.connectors import create_connector
 from testbench.connectors.base import ConnectorError, ObjectRef, ensure_read_only
-
-
-class FakeCursor:
-    def __init__(self, conn: "FakeConnection") -> None:
-        self.conn = conn
-        self.description = None
-        self._rows: list[tuple] = []
-
-    def execute(self, sql: str, params=None) -> None:
-        self.conn.executed.append((" ".join(sql.split()), params))
-        if "FAIL" in sql:
-            raise self.conn.module.Error("SQL syntax error")
-        for marker, (columns, rows) in self.conn.responses.items():
-            if marker in sql:
-                self.description = [(c,) for c in columns]
-                self._rows = rows
-                return
-        self.description, self._rows = [("X",)], [(1,)]
-
-    def fetchall(self) -> list[tuple]:
-        return self._rows
-
-    def close(self) -> None:
-        pass
-
-
-class FakeConnection:
-    def __init__(self, module, responses) -> None:
-        self.module = module
-        self.responses = responses
-        self.executed: list[tuple] = []
-        self.closed = False
-
-    def cursor(self) -> FakeCursor:
-        return FakeCursor(self)
-
-    def close(self) -> None:
-        self.closed = True
-
-
-@pytest.fixture
-def driver(monkeypatch: pytest.MonkeyPatch):
-    dbapi = types.ModuleType("hdbcli.dbapi")
-    dbapi.Error = type("Error", (Exception,), {})
-    dbapi.calls = []
-    dbapi.responses = {}
-
-    def connect(**kwargs):
-        dbapi.calls.append(kwargs)
-        if kwargs["password"] == "wrong":
-            raise dbapi.Error("authentication failed")
-        dbapi.connection = FakeConnection(dbapi, dbapi.responses)
-        return dbapi.connection
-
-    dbapi.connect = connect
-    package = types.ModuleType("hdbcli")
-    package.dbapi = dbapi
-    monkeypatch.setitem(sys.modules, "hdbcli", package)
-    monkeypatch.setitem(sys.modules, "hdbcli.dbapi", dbapi)
-    return dbapi
-
+from testbench.connectors.datasphere import DatasphereConnector
 
 SETTINGS = {"host": "tenant.example.test", "user": "HR#TB", "password": "pw", "schema": "HR"}
 
@@ -151,3 +90,41 @@ def test_only_select_statements_are_allowed(sql: str) -> None:
 )
 def test_select_statements_pass_the_guard(sql: str) -> None:
     ensure_read_only(sql)
+
+
+def test_space_setting_selects_the_schema(driver) -> None:
+    settings = {k: v for k, v in SETTINGS.items() if k != "schema"}
+    create_connector("datasphere", {**settings, "space": "HR_SPACE"}).test_connection()
+    assert driver.calls[0]["currentSchema"] == "HR_SPACE"
+    assert driver.calls[0]["connectTimeout"] == 20000
+
+
+FORM = {
+    "tenant_url": "https://acme.eu10.hcs.cloud.sap/dwaas-core/index.html#/home",
+    "space": " hr_space ",
+    "host": "https://abc-123.hana.prod-eu10.hanacloud.ondemand.com:443",
+    "user": "HR_SPACE#TB",
+    "password": "pw",
+}
+
+
+def test_form_settings_are_normalised() -> None:
+    settings = DatasphereConnector.check_settings(FORM)
+    assert settings["tenant_url"] == "https://acme.eu10.hcs.cloud.sap"
+    assert settings["space"] == "HR_SPACE"
+    assert settings["host"] == "abc-123.hana.prod-eu10.hanacloud.ondemand.com"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"host": "db.internal.example"},  # only SAP HANA Cloud hosts
+        {"host": "127.0.0.1"},
+        {"tenant_url": "http://acme.eu10.hcs.cloud.sap"},
+        {"space": "HR SPACE"},
+        {"user": " "},
+    ],
+)
+def test_form_settings_are_rejected(change: dict) -> None:
+    with pytest.raises(ConnectorError):
+        DatasphereConnector.check_settings({**FORM, **change})

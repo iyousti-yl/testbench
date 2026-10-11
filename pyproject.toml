@@ -12,6 +12,7 @@ dependencies = ["pyyaml>=6", "jsonschema>=4.18"]
 
 [project.optional-dependencies]
 datasphere = ["hdbcli>=2.19"]
+successfactors = ["cryptography>=42"]  # OAuth 2.0 SAML bearer signing
 web = [
   "fastapi>=0.110",
   "uvicorn>=0.29",
@@ -28,12 +29,13 @@ testbench = "testbench.cli:main"
 [project.entry-points."testbench.connectors"]
 sqlite = "testbench.connectors.sqlite:SQLiteConnector"
 datasphere = "testbench.connectors.datasphere:DatasphereConnector"
+successfactors = "testbench.connectors.successfactors:SuccessFactorsConnector"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-testbench = ["schema/*.json", "example/**/*", "web/templates/*", "web/static/*"]
+testbench = ["schema/*.json", "web/templates/*", "web/static/*"]
 
 [tool.ruff]
 line-length = 100

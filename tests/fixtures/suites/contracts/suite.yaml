@@ -1,0 +1,3 @@
+description: Contracts from a source system to a target model and a payroll export.
+connection: target
+tags: [hr]

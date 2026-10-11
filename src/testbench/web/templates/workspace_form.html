@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit " ~ workspace.name if workspace else "New workspace" }} · Testbench{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/">Workspaces</a>{% if workspace %} / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a>{% endif %}</nav>
+<section class="card form-card">
+  <h1>{{ "Edit workspace" if workspace else "New workspace" }}</h1>
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+  <form method="post" action="{{ '/w/' ~ workspace.slug ~ '/edit' if workspace else '/workspaces' }}" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Name
+      <input name="name" value="{{ values.name or '' }}" maxlength="80" required autofocus placeholder="NMBS · HR integration">
+    </label>
+    <label>Description <span class="hint">Optional</span>
+      <textarea name="description" rows="3" maxlength="500" placeholder="What is tested here, for which client or project">{{ values.description or '' }}</textarea>
+    </label>
+    {% if workspace %}<p class="muted small">Workspace ID in links: {{ workspace.slug }} (does not change when you rename).</p>{% endif %}
+    <div class="actions">
+      <button type="submit">{{ "Save" if workspace else "Create workspace" }}</button>
+      <a class="button secondary" href="{{ '/w/' ~ workspace.slug if workspace else '/' }}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
