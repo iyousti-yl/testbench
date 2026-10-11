@@ -102,13 +102,11 @@ def icon(name: str, label: str | None = None, cls: str = "") -> Markup:
 
 
 def logo(cls: str = "logo") -> Markup:
-    """The Testbench mark: a health strip of four scenario results, the last one still open."""
-    bars = "".join(
-        f'<rect class="logo-bar{" off" if i == 3 else ""}" x="{3.8 + i * 4.4:g}" y="6.5" '
-        f'width="3.2" height="11" rx="1"/>'
-        for i in range(4)
-    )
+    """The Testbench mark: a line with three stops, the last one still open."""
     return Markup(
         f'<svg class="{escape(cls)}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
-        f'<rect class="logo-ground" width="24" height="24" rx="6"/>{bars}</svg>'
+        '<path class="logo-line" d="M3 12h18"/>'
+        '<circle class="logo-stop" cx="5.5" cy="12" r="3"/>'
+        '<circle class="logo-stop" cx="12" cy="12" r="3"/>'
+        '<circle class="logo-stop off" cx="18.5" cy="12" r="2.4"/></svg>'
     )

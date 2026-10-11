@@ -1,4 +1,7 @@
 {% import "_macros.html" as m -%}
+{% set nav = nav | default("") -%}
+{% if false %}{% block crumbs %}{% endblock %}{% endif -%}
+{% set crumbs_html = self.crumbs() | trim -%}
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,32 +9,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}Testbench{% endblock %}</title>
-  <link rel="preload" href="/static/fonts/SourceSans3-Variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/LibreFranklin-Variable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
-  <header class="shell">
-    <a class="shell-brand" href="/" aria-label="Testbench home">{{ logo() }}<span>Testbench</span></a>
-    {% if user %}
-    <nav class="crumbs" aria-label="Breadcrumb">{% block crumbs %}{% endblock %}</nav>
-    <div class="shell-end">
-      <details class="menu">
-        <summary class="avatar" title="{{ user.name }}"><span class="sr-only">Account menu for {{ user.name }}</span><span aria-hidden="true">{{ user.name | initials }}</span></summary>
-        <div class="menu-pop">
-          <div class="menu-head"><strong>{{ user.name }}</strong><span>{{ user.email }}</span></div>
-          <form method="post" action="/logout">
-            <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button class="menu-item" type="submit">{{ icon("logout") }}<span>Sign out</span></button>
-          </form>
-        </div>
-      </details>
-    </div>
-    {% endif %}
+<body class="{{ 'app' if user else 'bare' }}">
+  {% if user %}
+  <header class="rail">
+    <a class="rail-brand" href="/" aria-label="Testbench home">{{ logo() }}<span>Testbench</span></a>
+    <nav class="rail-nav" aria-label="Main">
+      <a href="/"{% if nav == "home" %} aria-current="page"{% endif %}>{{ icon("workspace") }}<span>Workspaces</span></a>
+      {% if workspace %}
+      {% set wbase = "/w/" ~ workspace.slug %}
+      <div class="rail-group">
+        <a class="rail-ws" href="{{ wbase }}"{% if nav == "workspace" %} aria-current="page"{% endif %}>{{ workspace.name }}</a>
+        <a href="{{ wbase }}#scenarios">{{ icon("scenario") }}<span>Scenarios</span></a>
+        <a href="{{ wbase }}#runs">{{ icon("clock") }}<span>Test runs</span></a>
+        <a href="{{ wbase }}#connections">{{ icon("plug") }}<span>Connections</span></a>
+        {% if workspace.is_owner %}<a href="{{ wbase }}/edit"{% if nav == "settings" %} aria-current="page"{% endif %}>{{ icon("settings") }}<span>Settings</span></a>{% endif %}
+      </div>
+      {% endif %}
+    </nav>
+    <details class="menu rail-user">
+      <summary title="{{ user.name }}"><span class="avatar" aria-hidden="true">{{ user.name | initials }}</span><span class="rail-user-name">{{ user.name }}</span><span class="sr-only">Account menu</span></summary>
+      <div class="menu-pop up">
+        <div class="menu-head"><strong>{{ user.name }}</strong><span>{{ user.email }}</span></div>
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="menu-item" type="submit">{{ icon("logout") }}<span>Sign out</span></button>
+        </form>
+      </div>
+    </details>
   </header>
-  <main class="page{% block page_class %}{% endblock %}" id="main">
-    {% for msg in messages %}{{ m.msg(msg.kind, msg.message) }}{% endfor %}
-    {% block content %}{% endblock %}
-  </main>
+  {% endif %}
+  <div class="work">
+    {% if user and crumbs_html %}<nav class="crumbs" aria-label="Breadcrumb">{{ crumbs_html }}</nav>{% endif %}
+    <main class="page{% block page_class %}{% endblock %}" id="main">
+      {% for msg in messages %}{{ m.msg(msg.kind, msg.message) }}{% endfor %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
 </body>
 </html>

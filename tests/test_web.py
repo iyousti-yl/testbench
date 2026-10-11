@@ -81,8 +81,10 @@ def test_create_rename_and_delete_a_workspace(alice: TestClient, app) -> None:
     page = alice.get("/w/nmbs-payroll").text
     assert "NMBS · Payroll 2027" in page and "Pilot" not in page
     assert "Get started" in page  # until the first test run
+    assert 'href="/w/nmbs-payroll#connections"' in page  # the side rail lists its sections
     settings = alice.get("/w/nmbs-payroll/edit").text  # rename and delete live together
     assert 'action="/w/nmbs-payroll/delete"' in settings and 'name="confirm"' in settings
+    assert 'href="/w/nmbs-payroll/edit" aria-current="page"' in settings
 
     (folder / ".testbench").mkdir()
     response = post(alice, "/w/nmbs-payroll/delete", {"confirm": "wrong"})
@@ -350,7 +352,7 @@ def test_run_flow_with_report(alice: TestClient, app, tmp_path: Path) -> None:
     assert {status for status, _ in latest.values()} == {"passed"}
     assert all(run_id.endswith("-run") for _, run_id in latest.values())
     page = alice.get("/w/client-a-hr").text
-    assert 'aria-label="Passed"' in page and "all passing" in page
+    assert '<span class="status positive">Passed</span>' in page and "all passing" in page
     assert "4 scenarios · all passing" in alice.get("/").text
 
 

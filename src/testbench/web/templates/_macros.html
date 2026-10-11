@@ -11,9 +11,9 @@
 {%- else %}<span class="status negative">{{ icon("failed") }}Cannot connect</span>{% endif %}
 {%- endmacro %}
 
-{% macro strip(statuses, label) -%}
-<div class="strip" role="img" aria-label="{{ label }}">
-  {%- for s in statuses %}<span class="seg {{ s or 'none' }}"></span>{% endfor -%}
+{% macro track(statuses, label) -%}
+<div class="track" role="img" aria-label="{{ label }}">
+  {%- for s in statuses %}<span class="stop {{ s or 'not-run' }}"></span>{% endfor -%}
 </div>
 {%- endmacro %}
 

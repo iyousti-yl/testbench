@@ -33,12 +33,15 @@ Users sign in, open a workspace per client or project, connect systems with read
 
 Precise, calm, trustworthy. Testbench should feel at home next to SAP's own cloud applications, so a consultant does not switch mental models when moving between them, while being clearly its own product. It is a tool people operate, not a marketing site: familiar controls, quiet surfaces, one clear action per view, and status that is readable at a glance.
 
+Its own look comes from a committed petrol side rail, Libre Franklin type and the line diagram (a suite is a line, each scenario a stop lit by its latest result), described in DESIGN.md.
+
 Three-word personality: **precise, calm, dependable**.
 
 Avoid:
 
 - Copying SAP's proprietary assets (the "72" font, SAP icons, logos, exact theme tokens). Compatible structure, own identity.
 - Dashboard clichés: big hero numbers, gradient charts, decorative sparklines.
+- The generic AI SaaS look: white cards with soft shadows floating on a grey canvas, one indigo or violet accent, a geometric default font.
 - Colour alone for meaning. Every status carries an icon and a word.
 
 ## Product Principles

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
+{% set nav = "settings" if workspace else "" %}
 {% block title %}{{ "Settings · " ~ workspace.name if workspace else "New workspace" }} · Testbench{% endblock %}
 {% block crumbs %}{% if workspace %}{{ m.crumbs([(workspace.name, "/w/" ~ workspace.slug), ("Settings", "")]) }}{% else %}{{ m.crumbs([("New workspace", "")]) }}{% endif %}{% endblock %}
 {% block page_class %} narrow{% endblock %}

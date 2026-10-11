@@ -125,7 +125,7 @@ Data security is a top priority: clients will connect HR and finance data. The r
 
 A FastAPI app with server-rendered pages and no JavaScript (`testbench web serve`).
 
-- **Look and feel:** compatible with SAP's cloud apps (Fiori Horizon, SAP Analytics Cloud, Datasphere) in structure, with its own type, colour and icons; see [DESIGN.md](../DESIGN.md) for tokens and rules and [PRODUCT.md](../PRODUCT.md) for who it is for. Every scenario shows its latest test run result, and each suite and workspace shows a health strip with one segment per scenario.
+- **Look and feel:** laid out like SAP's cloud apps (a side navigation as in Datasphere and SAP Analytics Cloud, object headers with key figures), with its own type, colour and icons; see [DESIGN.md](../DESIGN.md) for tokens and rules and [PRODUCT.md](../PRODUCT.md) for who it is for. Every scenario shows its latest test run result: a suite is drawn as a line with one stop per scenario, and workspaces and reports show the same line.
 
 - **Data layout:** `TESTBENCH_DATA_DIR/app.db` holds users, workspaces, memberships, connections and their encrypted secrets (schema versioned with `PRAGMA user_version`). Each workspace has its own folder (`workspaces/<id>/`) with `suites/` and `.testbench/` (baselines and runs); the runner gets its connections from the database, so the engine runs unchanged.
 - **Workspaces:** any signed-in user can create one and becomes its owner. The id in links is derived from the name once and never changes on rename, and an id whose folder still exists on disk is never reused. Rename and delete live on the workspace's Settings page; deleting asks to type the id, removes the folder first and then the database rows, so no data is left behind for a later workspace.

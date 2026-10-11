@@ -84,47 +84,48 @@ def _details(details: dict[str, Any]) -> str:
 
 
 _CSS = """
-:root{color-scheme:light;--bg:#f4f6f8;--card:#fff;--sunk:#edf0f4;--text:#14202d;--muted:#4c5d6e;
---border:#dce0e5;--brand:#3056cd;--ok:#21763c;--ok-bg:#e4fbe7;--bad:#b32228;--bad-bg:#ffedec;
---warn:#a75000;--warn-bg:#fff3d8;--skip:#576574;--skip-bg:#ebeff2;--seg-passed:#3ca059;
---seg-failed:#d42f34;--seg-error:#ea942f;--seg-skipped:#b7bfc7;
---shadow:0 1px 2px rgba(20,32,45,.1),0 2px 6px rgba(20,32,45,.06)}
-@media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#11171d;--card:#1a2129;
---sunk:#141a21;--text:#e7ecf0;--muted:#a6b3c1;--border:#2e363f;--brand:#84a8fd;--ok:#6fd087;
---ok-bg:#1a3520;--bad:#fb817f;--bad-bg:#4a2322;--warn:#eeb154;--warn-bg:#402c12;--skip:#a6b3c1;
---skip-bg:#282f35;--seg-passed:#4cb86a;--seg-failed:#ed5350;--seg-error:#f0a646;
---seg-skipped:#555f69;--shadow:none}}
+:root{color-scheme:light;--bg:#fff;--card:#fff;--sunk:#eef6f8;--text:#122228;--muted:#4c626b;
+--border:#dbe3e6;--track:#19323b;--ok:#21763c;--ok-bg:#e4fbe7;--bad:#be2323;--bad-bg:#ffedec;
+--warn:#a75000;--warn-bg:#fff3d8;--skip:#54676e;--skip-bg:#e9f0f2;--stop-passed:#25984d;
+--stop-failed:#d42325;--stop-error:#e78c08;--stop-skipped:#7c8d93}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#0f1619;--card:#121b1e;
+--sunk:#162024;--text:#e6ecef;--muted:#a1b5bd;--border:#28353a;--track:#b1c1c7;--ok:#6fd087;
+--ok-bg:#1a3520;--bad:#fb817f;--bad-bg:#4a2322;--warn:#eeb154;--warn-bg:#402c12;--skip:#a1b5bd;
+--skip-bg:#263033;--stop-passed:#4ac06c;--stop-failed:#f4514f;--stop-error:#f7ac4d;
+--stop-skipped:#65747a}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);
-font:15px/1.5 "Source Sans 3","Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+font:15px/1.5 "Libre Franklin","Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums}
 header{padding:20px 24px 4px;max-width:1100px;margin:0 auto}
 header h1{margin:0;font-size:22px;line-height:1.25}header p{margin:4px 0 0;color:var(--muted)}
 main{max-width:1100px;margin:0 auto;padding:12px 24px 32px}
-.strip{display:flex;gap:2px;height:6px;border-radius:3px;overflow:hidden;margin:12px 0 0;
-max-width:320px}
-.seg{flex:1 1 0;background:var(--seg-skipped)}.seg.passed{background:var(--seg-passed)}
-.seg.failed{background:var(--seg-failed)}.seg.error{background:var(--seg-error)}
+.track{position:relative;display:flex;justify-content:space-between;align-items:center;gap:2px;
+height:16px;max-width:320px;margin:12px 0 0}
+.track::before{content:"";position:absolute;left:0;right:0;top:7px;height:2px;background:var(--track)}
+.stop{position:relative;flex:0 1 10px;min-width:4px;height:10px;border-radius:50%;
+box-shadow:0 0 0 2px var(--bg)}
+.stop.passed{background:var(--stop-passed)}.stop.skipped{background:var(--stop-skipped)}
+.stop.failed{background:var(--stop-failed);border-radius:2px;transform:rotate(45deg) scale(.86)}
+.stop.error{background:var(--stop-error);border-radius:2px;transform:scale(.86)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px}
-.tile{background:var(--card);border-radius:12px;padding:12px 16px;box-shadow:var(--shadow);
-border:1px solid transparent}.tile b{display:block;font-size:26px;line-height:1.2;background:none}
+.tile{background:var(--card);border-radius:6px;padding:12px 16px;border:1px solid var(--border)}
+.tile b{display:block;font-size:24px;line-height:1.2;background:none}
 .tile span{color:var(--muted);font-size:14px}
-details{background:var(--card);border-radius:12px;margin-bottom:12px;box-shadow:var(--shadow);
-border:1px solid transparent}
-@media (prefers-color-scheme:dark){.tile,details{border-color:var(--border)}}
+details{background:var(--card);border-radius:6px;margin-bottom:12px;border:1px solid var(--border)}
 summary{cursor:pointer;padding:12px 20px;display:flex;gap:12px;align-items:center;list-style:none}
-summary::-webkit-details-marker{display:none}summary:hover{background:var(--sunk);border-radius:12px}
+summary::-webkit-details-marker{display:none}summary:hover{background:var(--sunk);border-radius:6px}
 .body{padding:0 20px 16px}.muted{color:var(--muted)}
-.badge{border-radius:4px;padding:1px 8px;font-size:13px;font-weight:600;white-space:nowrap}
+.badge{border-radius:3px;padding:1px 8px;font-size:13px;font-weight:600;white-space:nowrap}
 b.passed,b.failed,b.error,b.skipped{background:none}
 .passed{color:var(--ok);background:var(--ok-bg)}.failed{color:var(--bad);background:var(--bad-bg)}
 .error{color:var(--warn);background:var(--warn-bg)}.skipped{color:var(--skip);background:var(--skip-bg)}
 p.error{background:none;color:var(--bad)}
-.req{background:var(--sunk);border-radius:8px;padding:8px 12px;margin:4px 0 8px;font-size:16px}
+.req{background:var(--sunk);border-radius:6px;padding:8px 12px;margin:4px 0 8px;font-size:16px}
 .check{border-top:1px solid var(--border);padding-top:8px;margin-top:8px}
 .check h4{margin:4px 0;display:flex;gap:8px;align-items:center;font-size:15px}
 h5{margin:12px 0 4px;font-size:14px}.scroll{overflow-x:auto}
 table{border-collapse:collapse;font-size:13px;min-width:50%}
 th,td{border-bottom:1px solid var(--border);padding:6px 10px;text-align:left}
-th{color:var(--muted);font-weight:600;background:var(--sunk)}
+th{color:var(--muted);font-weight:600;border-bottom:2px solid var(--track)}
 ul{margin:4px 0;padding-left:20px}li{margin:2px 0}
 """
 
@@ -143,7 +144,7 @@ def html_report(result: RunResult) -> str:
         for k, v in counts.items()
     )
     kind = "Baseline" if result.mode == "baseline" else "Test run"
-    strip = "".join(f"<span class='seg {s.status}'></span>" for s in result.scenarios)
+    track = "".join(f"<span class='stop {s.status}'></span>" for s in result.scenarios)
     sections = []
     for s in result.scenarios:
         checks_html = []
@@ -179,7 +180,7 @@ def html_report(result: RunResult) -> str:
         f"<title>{_e(result.suite)} test report</title><style>{_CSS}</style></head><body>"
         f"<header><h1>{_e(result.project)} · {_e(result.suite)}</h1>"
         f"<p>{kind} · {_LABELS.get(result.status, result.status)} · {_when(result.started_at)}</p>"
-        f"<div class='strip' role='img' aria-label='Result of each scenario'>{strip}</div>"
+        f"<div class='track' role='img' aria-label='Result of each scenario'>{track}</div>"
         "</header>"
         f"<main><div class='tiles'>{tiles}</div>{''.join(sections)}</main></body></html>"
     )
