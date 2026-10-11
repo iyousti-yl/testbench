@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ scenario.name }} · Testbench{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a> / <a href="/w/{{ workspace.slug }}/suites/{{ suite }}/scenarios/{{ scenario.id }}">{{ scenario.name }}</a></nav>
+<section class="card form-card">
+  <h1>Delete scenario {{ scenario.name }}?</h1>
+  {% if scenario.requirement %}<p class="requirement">{{ scenario.requirement }}</p>{% endif %}
+  <p>Its baselines are deleted too. Reports of earlier runs stay available.</p>
+  <form method="post" action="/w/{{ workspace.slug }}/suites/{{ suite }}/scenarios/{{ scenario.id }}/delete">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="actions">
+      <button class="danger" type="submit">Delete scenario</button>
+      <a class="button secondary" href="/w/{{ workspace.slug }}/suites/{{ suite }}/scenarios/{{ scenario.id }}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

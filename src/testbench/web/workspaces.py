@@ -81,12 +81,12 @@ class WorkspaceFiles:
                 return scenario, scenario.path.read_text(encoding="utf-8")
         raise NotFound(f"scenario {scenario_id}")
 
-    def run(self, suite_name: str, mode: str) -> RunResult:
+    def run(self, suite_name: str, mode: str, scenarios: list[str] | None = None) -> RunResult:
         self.suite(suite_name)  # 404 for unknown suites before anything runs
         config = self.config()
         with workspace_lock(self.workspace):
             runner = Runner(config, secrets=self.store.secrets_for(self.workspace))
-            result = runner.run_suite(suite_name, mode=mode)
+            result = runner.run_suite(suite_name, mode=mode, scenarios=scenarios)
             run_dir = save_run(result, config.output_dir)
             write_report(result, run_dir)
         return result

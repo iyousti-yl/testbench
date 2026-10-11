@@ -22,7 +22,8 @@ After signing in:
 
 1. **Create a workspace** for a client or project. You can rename or delete it later; deleting removes its connections, scenarios, baselines and reports.
 2. **Add connections.** The app offers SAP Datasphere and SAP SuccessFactors. Each connection card shows where it points (Datasphere: tenant URL, space and database user; SuccessFactors: API server, company ID and user) and whether the last test succeeded. Passwords and keys are encrypted and never shown again.
-3. Only workspace owners change the workspace and its connections. Give a colleague access with `testbench web add-member <workspace-id> <email> [--role owner]`.
+3. **Write test scenarios.** Each scenario has a title, the business requirement in plain words, a connection, optional "records to test" and one or more checks written in YAML. The app validates every save against the scenario format and keeps scenarios as files in the workspace, so the command line and the `write-scenario` skill work on the same files. Run a whole suite or a single scenario, capture baselines and read the report.
+4. Only workspace owners change the workspace and its connections; every member can write and run scenarios. Give a colleague access with `testbench web add-member <workspace-id> <email> [--role owner]`.
 
 Keep `TESTBENCH_SECRET_KEY` safe and stable: it signs sessions and encrypts stored credentials. A hosted instance can run on Render's free plan: see [docs/deploy.md](docs/deploy.md).
 

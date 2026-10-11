@@ -1,5 +1,4 @@
 import json
-import re
 import shutil
 import sqlite3
 from pathlib import Path
@@ -10,6 +9,7 @@ pytest.importorskip("fastapi")
 
 from conftest import FIXTURES, build_project  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from webhelpers import PASSWORD, SECRET, client_for, csrf_of, login, post  # noqa: E402
 
 from testbench.connectors import successfactors  # noqa: E402
 from testbench.runner import Runner  # noqa: E402
@@ -18,8 +18,6 @@ from testbench.web.security import SecretBox  # noqa: E402
 from testbench.web.store import Store, StoreError  # noqa: E402
 from testbench.web.workspaces import WorkspaceFiles  # noqa: E402
 
-SECRET = "test-secret-key-that-is-long-enough-1234567890"
-PASSWORD = "correct horse battery"
 DATASPHERE = {
     "name": "datasphere-dev",
     "s_tenant_url": "https://acme.eu10.hcs.cloud.sap",
@@ -29,57 +27,6 @@ DATASPHERE = {
     "s_password": "s3cret-value",
     "sensitive": "on",
 }
-
-
-@pytest.fixture
-def app(tmp_path: Path):
-    app = create_app(tmp_path / "data", SECRET, secure_cookies=False)
-    store = app.state.store
-    alice = store.create_user("alice@client-a.test", "Alice", PASSWORD)
-    bob = store.create_user("bob@client-b.test", "Bob", PASSWORD)
-    store.create_user("carol@client-a.test", "Carol", PASSWORD)
-    store.create_workspace(alice, "Client A · HR")
-    store.create_workspace(bob, "Client B")
-    store.add_member("client-a-hr", "carol@client-a.test", "member")
-    return app
-
-
-def csrf_of(client: TestClient, path: str = "/login") -> str:
-    html = client.get(path).text
-    match = re.search(r'name="csrf" value="([^"]+)"', html)
-    assert match, f"no csrf token on {path}"
-    return match.group(1)
-
-
-def login(client: TestClient, email: str, password: str = PASSWORD):
-    token = csrf_of(client)
-    return client.post(
-        "/login",
-        data={"email": email, "password": password, "csrf": token},
-        follow_redirects=False,
-    )
-
-
-def client_for(app, email: str) -> TestClient:
-    client = TestClient(app)
-    assert login(client, email).headers["location"] == "/"
-    return client
-
-
-@pytest.fixture
-def alice(app) -> TestClient:
-    return client_for(app, "alice@client-a.test")
-
-
-@pytest.fixture
-def carol(app) -> TestClient:
-    return client_for(app, "carol@client-a.test")
-
-
-def post(client: TestClient, path: str, data: dict | None = None, page: str = "/"):
-    return client.post(
-        path, data={"csrf": csrf_of(client, page), **(data or {})}, follow_redirects=False
-    )
 
 
 def add_datasphere(client: TestClient, slug: str = "client-a-hr", **changes):
