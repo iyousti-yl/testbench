@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Run · {{ workspace.name }} · Testbench{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a> / Run</nav>
+<div class="row">
+  <h1>{{ result.suite }} · {{ "Baseline" if result.mode == "baseline" else "Test run" }}</h1>
+  <span class="badge large {{ result.status }}">{{ status_label[result.status] }}</span>
+</div>
+<p class="muted">Started {{ result.started_at | when }}</p>
+<iframe class="report" src="/w/{{ workspace.slug }}/runs/{{ run_id }}/report" sandbox title="Test report"></iframe>
+{% endblock %}

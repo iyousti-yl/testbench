@@ -138,14 +138,34 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("action", choices=["break", "fix"])
     p.set_defaults(func=cmd_demo)
 
+    try:
+        from testbench.web.admin import add_parser as add_web_parser
+    except ImportError:
+        p = sub.add_parser("web", help="web app (needs: pip install 'testbench[web]')")
+        p.set_defaults(func=lambda _: _missing_web())
+    else:
+        add_web_parser(sub)
+
     return parser
+
+
+def _missing_web() -> int:
+    print("error: the web app needs extra packages: pip install 'testbench[web]'", file=sys.stderr)
+    return 2
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (ConfigError, ScenarioError, ConnectorError, FileExistsError, FileNotFoundError) as exc:
+    except (
+        ConfigError,
+        ScenarioError,
+        ConnectorError,
+        FileExistsError,
+        FileNotFoundError,
+        ValueError,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

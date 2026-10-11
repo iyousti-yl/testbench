@@ -1,0 +1,65 @@
+:root {
+  --bg: #f5f6f7; --card: #fff; --text: #1d2d3e; --muted: #556b82; --border: #d9d9d9;
+  --brand: #0070f2; --brand-dark: #0057d2; --shell: #fff;
+  --ok: #256f3a; --ok-bg: #f5fae5; --bad: #aa0808; --bad-bg: #ffeaf4;
+  --warn: #e76500; --warn-bg: #fff8d6; --skip: #5b738b; --skip-bg: #eff1f2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12171c; --card: #1d232a; --text: #eaecee; --muted: #a9b4be; --border: #3a434c;
+    --brand: #4db1ff; --brand-dark: #1a9bff; --shell: #1d232a;
+    --ok: #6dd58c; --ok-bg: #1d3324; --bad: #ff8888; --bad-bg: #3d1c22;
+    --warn: #ffab4d; --warn-bg: #3b2d16; --skip: #a9b4be; --skip-bg: #2a3138;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 "72", "Segoe UI", system-ui, sans-serif; }
+a { color: var(--brand); }
+header.shell { display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 24px; background: var(--shell); border-bottom: 1px solid var(--border); }
+.brand { font-weight: 700; font-size: 16px; color: var(--text); text-decoration: none; }
+.who { display: flex; gap: 12px; align-items: center; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 22px; margin: 8px 0 16px; }
+h2 { font-size: 16px; margin: 0 0 8px; }
+.muted { color: var(--muted); }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 20px; margin-bottom: 16px; }
+.narrow { max-width: 420px; margin: 48px auto; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.tile-link { display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: var(--text); }
+.tile-link:hover { border-color: var(--brand); }
+.row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+input { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--text); }
+button { font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--brand); background: var(--brand); color: #fff; }
+button:hover { background: var(--brand-dark); }
+button.secondary { background: transparent; color: var(--brand); }
+button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
+button.link { background: none; border: none; color: var(--brand); padding: 0; }
+.flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; background: var(--skip-bg); }
+.flash.error { background: var(--bad-bg); color: var(--bad); }
+.crumbs { color: var(--muted); font-size: 13px; }
+.scenarios { list-style: none; padding: 0; margin: 8px 0 0; }
+.scenarios li { padding: 10px 0; border-top: 1px solid var(--border); }
+.scenarios p { margin: 2px 0 4px; }
+.tag { display: inline-block; font-size: 12px; padding: 0 8px; margin-right: 4px;
+  border-radius: 999px; background: var(--skip-bg); color: var(--skip); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.badge { border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.badge.large { font-size: 14px; padding: 4px 14px; }
+.passed { color: var(--ok); background: var(--ok-bg); }
+.failed { color: var(--bad); background: var(--bad-bg); }
+.error { color: var(--warn); background: var(--warn-bg); }
+.skipped { color: var(--skip); background: var(--skip-bg); }
+.requirement { border-left: 3px solid var(--brand); padding: 4px 12px; margin: 0; }
+pre { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+  overflow-x: auto; font-size: 13px; }
+iframe.report { width: 100%; height: 75vh; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+@media (max-width: 640px) { th:nth-child(n+5), td:nth-child(n+5) { display: none; } }

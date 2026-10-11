@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ workspace.name }} · Testbench{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/">Workspaces</a> / {{ workspace.name }}</nav>
+<h1>{{ workspace.name }}</h1>
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+{% for suite in suites %}
+<section class="card">
+  <div class="row">
+    <div>
+      <h2>{{ suite.name }}</h2>
+      {% if suite.description %}<p class="muted">{{ suite.description }}</p>{% endif %}
+    </div>
+    <div class="actions">
+      <form method="post" action="/w/{{ workspace.slug }}/suites/{{ suite.name }}/run">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="mode" value="baseline">
+        <button class="secondary" type="submit">Capture baseline</button>
+      </form>
+      <form method="post" action="/w/{{ workspace.slug }}/suites/{{ suite.name }}/run">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="mode" value="run">
+        <button type="submit">Run tests</button>
+      </form>
+    </div>
+  </div>
+  <ul class="scenarios">
+    {% for s in suite.scenarios %}
+    <li>
+      <a href="/w/{{ workspace.slug }}/suites/{{ suite.name }}/scenarios/{{ s.id }}">{{ s.name }}</a>
+      {% if s.requirement %}<p class="muted">{{ s.requirement }}</p>{% endif %}
+      {% for t in s.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+
+<section class="card">
+  <h2>Recent runs</h2>
+  {% if runs %}
+  <table>
+    <thead><tr><th>Started</th><th>Suite</th><th>Type</th><th>Result</th><th>Passed</th><th>Failed</th><th>Error</th><th>Not tested</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+    <tr>
+      <td><a href="/w/{{ workspace.slug }}/runs/{{ r.id }}">{{ r.started_at | when }}</a></td>
+      <td>{{ r.suite }}</td>
+      <td>{{ "Baseline" if r.mode == "baseline" else "Test run" }}</td>
+      <td><span class="badge {{ r.status }}">{{ status_label[r.status] }}</span></td>
+      <td>{{ r.counts.passed }}</td><td>{{ r.counts.failed }}</td><td>{{ r.counts.error }}</td><td>{{ r.counts.skipped }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No runs yet. Capture a baseline on a known-good state, then run the tests.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Connections</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Type</th><th>Data</th><th>Stored secrets</th></tr></thead>
+    <tbody>
+    {% for c in connections %}
+    <tr>
+      <td>{{ c.name }}</td><td>{{ c.type }}</td>
+      <td>{{ "Sensitive: baselines are hashed" if c.sensitive else "Standard" }}</td>
+      <td>{{ (secret_names.get(c.name) or ["none"]) | join(", ") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">Secret values are encrypted and never shown.</p>
+</section>
+
+{% if workspace.is_demo %}
+<section class="card demo">
+  <h2>Demo controls</h2>
+  <p class="muted">This workspace uses generated data. Inject a realistic defect to see the tests catch it.</p>
+  <div class="actions">
+    <form method="post" action="/w/{{ workspace.slug }}/demo/break">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="danger" type="submit">Inject defect</button>
+    </form>
+    <form method="post" action="/w/{{ workspace.slug }}/demo/fix">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="secondary" type="submit">Restore data</button>
+    </form>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
