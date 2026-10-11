@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "scenario": "Contract data is complete and plausible",
+  "requirement": "Every contract must have a cost center, and FTE must be above 0 and at most 1.",
+  "tags": ["data-quality"],
+  "checks": [
+    {
+      "name": "no contract without cost center",
+      "query": "SELECT contract_id, employee_id, month FROM HR_CONTRACTS WHERE cost_center IS NULL",
+      "expect": { "row_count": 0 }
+    },
+    {
+      "name": "FTE within range",
+      "query": "SELECT contract_id, month, fte FROM HR_CONTRACTS",
+      "expect": { "all_rows": "fte > 0 and fte <= 1" }
+    }
+  ]
+}

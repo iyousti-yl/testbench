@@ -1,0 +1,32 @@
+version: 1
+scenario: Employee with two contracts in the same month
+requirement: >
+  When an employee changes contract in the middle of a month, payroll must receive one
+  cost line per contract, and together they must cover exactly one month.
+tags: [payroll, edge-case]
+
+select: |
+  SELECT employee_id, month
+  FROM HR_CONTRACTS
+  GROUP BY employee_id, month
+  HAVING COUNT(*) = 2
+
+checks:
+  - name: one cost line per contract
+    query: |
+      SELECT employee_id, month, COUNT(*) AS lines
+      FROM HR_COST_LINES_V
+      WHERE (employee_id, month) IN ({{ selection }})
+      GROUP BY employee_id, month
+    expect:
+      row_count: { min: 1 }
+      all_rows: lines == 2
+
+  - name: shares cover exactly one month
+    query: |
+      SELECT employee_id, month, SUM(share) AS total_share
+      FROM HR_COST_LINES_V
+      WHERE (employee_id, month) IN ({{ selection }})
+      GROUP BY employee_id, month
+    expect:
+      all_rows: abs(total_share - 1) < 0.001

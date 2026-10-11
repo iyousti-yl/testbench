@@ -1,0 +1,22 @@
+version: 1
+scenario: Payroll export matches SuccessFactors
+requirement: >
+  The total cost per month sent to payroll must equal the total cost per month computed
+  from the SuccessFactors contracts.
+tags: [reconciliation]
+
+checks:
+  - name: monthly totals match the source
+    query: |
+      SELECT month, ROUND(SUM(total_cost), 2) AS total_cost
+      FROM PAYROLL_EXPORT_V
+      GROUP BY month
+    expect:
+      reconcile:
+        connection: source
+        query: |
+          SELECT month, ROUND(SUM(ROUND(monthly_salary * fte * share, 2)), 2) AS total_cost
+          FROM SF_CONTRACTS
+          GROUP BY month
+        keys: [month]
+        tolerance: 0.01

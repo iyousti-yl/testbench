@@ -1,0 +1,16 @@
+version: 1
+scenario: Cost lines unchanged after a change
+requirement: >
+  After any change to the HR model, the cost lines must stay exactly as they were on the last
+  approved version, unless the change was meant to alter them.
+tags: [regression]
+
+checks:
+  - name: cost lines match the baseline
+    query: |
+      SELECT contract_id, month, employee_id, cost_center, cost
+      FROM HR_COST_LINES_V
+    expect:
+      regression:
+        keys: [contract_id, month]
+        tolerance: 0.01
