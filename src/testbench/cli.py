@@ -9,6 +9,7 @@ from pathlib import Path
 from testbench import __version__
 from testbench.config import CONFIG_FILE, ConfigError, load_config
 from testbench.connectors import ConnectorError, create_connector
+from testbench.lineage import LineageDiff, LineageSnapshot, LineageStore, capture, compare
 from testbench.report import console_summary, write_report
 from testbench.runner import Runner, save_run
 from testbench.scenario import ScenarioError, list_suites, load_suite
@@ -27,6 +28,7 @@ connections:
   #   host: ${{DSP_HOST}}
   #   user: ${{DSP_USER}}
   #   password: ${{DSP_PASSWORD}}
+  #   lineage_scope: <SPACE_ID>, <OTHER_SPACE>   # optional: what 'testbench lineage' maps
   #   sensitive: true        # personal data: baselines keep hashes, not values
 
   # SAP SuccessFactors OData API (pip install 'testbench[successfactors]'):
@@ -129,6 +131,53 @@ def _run(args: argparse.Namespace, mode: str) -> int:
     return 0 if result.status in ("passed", "skipped") else 1
 
 
+def lineage_summary(snapshot: LineageSnapshot, diff: LineageDiff) -> str:
+    graph = snapshot.graph
+    inside = [o for o in graph.objects.values() if o.kind != "external"]
+    lines = [
+        f"Lineage of {snapshot.connection} ({', '.join(snapshot.scope)}): "
+        f"{len(inside)} objects, {len(graph.edges)} dependencies"
+    ]
+    if diff.first:
+        lines.append("First lineage of this connection: the next one lists what changed.")
+        return "\n".join(lines)
+    if not diff.changes and not diff.edges_added and not diff.edges_removed:
+        lines.append(f"Nothing changed since {diff.previous.captured_at}.")
+        return "\n".join(lines)
+    lines.append(f"Changes since {diff.previous.captured_at}:")
+    for change in diff.changes:
+        details = f" ({'; '.join(change.details)})" if change.details else ""
+        lines.append(f"  {change.status:8} {change.kind:8} {change.key}{details}")
+        if change.impacted:
+            lines.append(f"           impacts: {', '.join(change.impacted)}")
+    for edge in diff.edges_added:
+        lines.append(f"  new dependency     {edge.target} reads {edge.source}")
+    for edge in diff.edges_removed:
+        lines.append(f"  dropped dependency {edge.target} no longer reads {edge.source}")
+    if diff.scenarios():
+        lines.append("Scenarios to re-run: " + ", ".join(diff.scenarios()))
+    return "\n".join(lines)
+
+
+def cmd_lineage(args: argparse.Namespace) -> int:
+    config = load_config()
+    conn = config.connection(args.connection)
+    connector = create_connector(conn.type, {**conn.resolved_settings(), "base_dir": config.root})
+    try:
+        snapshot = capture(connector, conn.name, args.scope)
+    except ValueError as exc:
+        raise ConnectorError(str(exc)) from exc
+    finally:
+        connector.close()
+    store = LineageStore(config.output_dir)
+    suites = [load_suite(config.suites_dir / name) for name in list_suites(config.suites_dir)]
+    diff = compare(store.latest(conn.name), snapshot, suites)
+    path = store.save(snapshot)
+    print(lineage_summary(snapshot, diff))
+    print(f"\nSaved: {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="testbench", description="Business-scenario regression testing for data landscapes."
@@ -149,6 +198,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--match", help="only names that contain this text, for example EmpJob")
     p.add_argument("--columns", action="store_true", help="also show columns")
     p.set_defaults(func=cmd_objects)
+
+    p = sub.add_parser("lineage", help="map objects and dependencies, and show what changed")
+    p.add_argument("connection")
+    p.add_argument(
+        "--scope",
+        action="append",
+        help="space or schema to map (repeatable; default: the connection's lineage scope)",
+    )
+    p.set_defaults(func=cmd_lineage)
 
     p = sub.add_parser("list", help="list suites and scenarios")
     p.set_defaults(func=cmd_list)

@@ -26,6 +26,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from testbench.checks import ERROR, FAILED, PASSED, SKIPPED
 from testbench.config import ConfigError
 from testbench.connectors import ConnectorError
+from testbench.lineage import snapshot_time
 from testbench.scenario import ScenarioError, list_suites
 from testbench.web import connections as conn_forms
 from testbench.web.scenarios import ScenarioFiles, ScenarioForm, build_document
@@ -93,6 +94,7 @@ def create_app(
     templates = Jinja2Templates(directory=str(package / "templates"))
     templates.env.globals["status_label"] = STATUS_LABELS
     templates.env.filters["when"] = format_time
+    templates.env.filters["snapshot_when"] = lambda value: format_time(snapshot_time(value), True)
 
     app = FastAPI(title="Testbench", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
@@ -304,6 +306,11 @@ def create_app(
             workspace=workspace,
             connections=[conn_forms.view(c) for c in store.connections(workspace)],
             connector_types=conn_forms.offered_types(),
+            last_lineage={
+                c.name: snapshot_time(ids[-1])
+                for c in store.connections(workspace)
+                if (ids := ws.lineage_store().ids(c.name))
+            },
             suites=suites,
             runs=ws.runs(),
             error=error,
@@ -513,6 +520,61 @@ def create_app(
         store.delete_connection(workspace, connection.id)
         flash(request, f"Deleted connection {connection.name} and its stored credentials.")
         return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
+
+    # Lineage -------------------------------------------------------------------
+
+    @app.post("/w/{slug}/connections/{connection_id}/lineage", response_model=None)
+    def run_lineage(
+        request: Request,
+        user: CurrentUser,
+        workspace: MemberWorkspace,
+        connection_id: int,
+        csrf: Annotated[str, Form()],
+    ) -> Response:
+        require_csrf(request, csrf)
+        connection = workspace_connection(workspace, connection_id)
+        if not conn_forms.view(connection).lineage:
+            raise HTTPException(status_code=404)
+        try:
+            WorkspaceFiles(store, workspace).capture_lineage(connection.name)
+        except (ConnectorError, ConfigError, ValueError) as exc:
+            flash(request, f"Lineage of {connection.name} failed: {exc}", "error")
+            return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
+        except Exception as exc:  # a driver problem must not break the page
+            message = f"{exc.__class__.__name__}: {exc}"
+            flash(request, f"Lineage of {connection.name} failed: {message}", "error")
+            return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
+        return RedirectResponse(f"/w/{workspace.slug}/lineage/{connection.name}", status_code=303)
+
+    @app.get("/w/{slug}/lineage/{connection_name}", response_class=HTMLResponse)
+    def lineage_page(
+        request: Request,
+        user: CurrentUser,
+        workspace: MemberWorkspace,
+        connection_name: str,
+        snapshot: str = "",
+    ) -> HTMLResponse:
+        connection = next(
+            (c for c in store.connections(workspace) if c.name == connection_name), None
+        )
+        if connection is None:
+            raise HTTPException(status_code=404)
+        ws = WorkspaceFiles(store, workspace)
+        try:
+            found = ws.lineage(connection.name, snapshot or None)
+        except NotFound as exc:
+            raise HTTPException(status_code=404) from exc
+        current, diff = found if found else (None, None)
+        return render(
+            request,
+            "lineage.html",
+            user=user,
+            workspace=workspace,
+            view=conn_forms.view(connection),
+            snapshot=current,
+            diff=diff,
+            history=list(reversed(ws.lineage_store().ids(connection.name))),
+        )
 
     # Suites and runs -----------------------------------------------------------
 
@@ -725,8 +787,9 @@ def create_app(
     return app
 
 
-def format_time(value: str) -> str:
+def format_time(value: str, seconds: bool = False) -> str:
     try:
-        return datetime.fromisoformat(value).strftime("%d %b %Y, %H:%M UTC")
+        moment = datetime.fromisoformat(value)
+        return moment.strftime("%d %b %Y, %H:%M:%S UTC" if seconds else "%d %b %Y, %H:%M UTC")
     except (TypeError, ValueError):
         return value

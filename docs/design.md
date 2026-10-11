@@ -1,6 +1,6 @@
 # Testbench design note (v1)
 
-Status: agreed direction, updated with milestone 6 · 2026-10-11 · "Testbench" is a working name.
+Status: agreed direction, updated with milestone 7 · 2026-10-11 · "Testbench" is a working name.
 
 ## Goal
 
@@ -17,6 +17,7 @@ Let SAP data consultants define business test scenarios in plain, readable files
 | Check | One verifiable expectation inside a scenario. |
 | Baseline | A stored snapshot of an object's output, used to detect regressions. |
 | Run | One execution of a suite, with a result per check and an HTML report. |
+| Lineage | A snapshot of a connection's objects (views, tables), their columns and definitions, and which object reads which. Each new lineage is compared with the previous one. |
 
 ## Connector interface
 
@@ -25,12 +26,13 @@ Every connector implements the same small interface, so adding a system never to
 ```python
 class Connector(Protocol):
     name: str  # "datasphere", "successfactors", ...
-    capabilities: set[str]  # {"sql" or "odata", "metadata"}
+    capabilities: set[str]  # {"sql" or "odata", "metadata", "lineage"}
 
     def test_connection(self) -> None: ...
     def list_objects(self, scope: str | None = None) -> list[ObjectRef]: ...
     def describe(self, obj: ObjectRef) -> ObjectSchema: ...  # columns, types, keys
     def query(self, query: str, params: dict | None = None) -> Table: ...  # SQL or OData path
+    def lineage(self, scope: list[str] | None) -> tuple[LineageGraph, list[str]]: ...  # optional
     def close(self) -> None: ...
 ```
 
@@ -38,6 +40,7 @@ class Connector(Protocol):
 - Connectors are discovered through Python entry points (`testbench.connectors`), so a connector can also ship as a separate package later.
 - **Offered in the web app** when the connector also declares `title`, `description` and `settings_fields` (a list of `SettingField`: label, help, whether it is secret, whether it is shown on the connection card), and optionally `check_settings(settings)` to validate and normalise what was typed. The web app builds its forms and connection cards from these, so it contains no connector-specific code. Today that list is SAP Datasphere and SAP SuccessFactors.
 - **Datasphere connector:** SQL over the HANA protocol (`hdbcli`, TLS only) using a space's database user with read access. It reads the views the space exposes for consumption; `space` becomes the current schema so scenarios can use unqualified view names. Object metadata comes from `SYS.VIEWS`, `SYS.TABLES` and their column views. Settings: tenant URL (shown, not used to connect), space ID, database host, user and password.
+- **Datasphere lineage:** reads `SYS.VIEWS` (with the view SQL), `SYS.TABLES`, `SYS.VIEW_COLUMNS`, `SYS.TABLE_COLUMNS` and `SYS.OBJECT_DEPENDENCIES` for the schemas in scope. The scope is the space unless the connection lists more spaces or Open SQL schemas (`lineage_scope`); objects read from outside the scope appear as *external*. A space's database user only sees its own space, so mapping several spaces needs a database analysis user.
 - **SuccessFactors connector:** OData v2 over HTTPS with only GET requests. A query is an OData path such as `EmpJob?$select=userId,startDate&$filter=...`; only `$select`, `$filter`, `$expand`, `$orderby`, `$top`, `$skip`, `fromDate`, `toDate` and `asOfDate` are accepted. Pages are followed through `__next` (same host only), values are converted with the entity's `$metadata` types (dates, decimals, integers), and expanded navigation properties become `nav/field` columns. `describe` returns the `sap:label` business names. Authentication is OAuth 2.0 with a SAML bearer assertion that Testbench signs locally (RSA-SHA256, exclusive canonical XML), or basic authentication while SAP still allows it.
 - **Read-only guard:** for SQL connectors the runner refuses any statement that is not a single `SELECT` (or `WITH`) before it reaches the connector. This prevents mistakes; the real protection is a database user with read privileges only. OData connectors only send GET requests.
 - **SQLite connector:** used for automated tests only, so everything runs without an SAP tenant. It is never offered in the web app, because it would let a user read files on the server.
@@ -95,6 +98,16 @@ A scenario whose `select` finds no records is reported as **not tested**, never 
 
 v1 builds option 1 and keeps the interface open for option 2.
 
+## Lineage
+
+Lineage answers two questions after a change on the tenant: what changed, and which tests must run again.
+
+- **Capture.** A connector with the `lineage` capability returns a graph: every object in scope with its kind, columns ("NAME TYPE" in order) and definition, plus an edge for each object that reads another. A capture is saved as a snapshot in the workspace (`.testbench/lineage/<connection>/<time>.json`); the latest 50 are kept.
+- **Compare.** Each new capture is compared with the previous one. An object is *changed* when its kind, columns or definition differ (whitespace in SQL does not count). The comparison names added, removed and retyped columns, shows the definition as a line diff, and lists dependencies that appeared or disappeared. The first capture has nothing to compare with.
+- **Impact.** For each change, everything downstream of the object (directly or indirectly) is listed, together with the scenarios whose queries on that connection name the object or anything downstream of it: those are the scenarios to re-run.
+- **Where.** In the web app, every member can map or update the lineage of a connection whose connector supports it, and browse earlier snapshots; on the command line `testbench lineage <connection>` prints the same changes.
+- **Next.** Database metadata covers what the SQL layer sees. Datasphere's design-time objects (data flows, replication flows, transformation flows, analytic models) and their lineage come from its repository API, which is a later step behind the same lineage interface.
+
 ## Security and privacy
 
 Data security is a top priority: clients will connect HR and finance data. The rules below hold from the first version, even while the product is a demo.
@@ -105,6 +118,7 @@ Data security is a top priority: clients will connect HR and finance data. The r
 - **Connections only reach SAP.** In the web app, Datasphere connections must use a SAP HANA Cloud host (`*.hanacloud.ondemand.com`) and SuccessFactors connections a SuccessFactors API server, so a connection form cannot be used to reach other hosts from the server. The SuccessFactors connector never follows redirects and refuses next-page links to another host.
 - **Read-only access.** Connectors only read. The SQLite connector opens databases read-only; the Datasphere connector uses a database user with read privileges only; the SuccessFactors connector only sends GET requests.
 - **Hash-mode baselines.** For connections marked `sensitive: true`, baselines store one hash per row and totals per numeric column, so regressions are detected without keeping personal data. Reports of failing checks do show sample rows (up to 20), because a report must show what broke; they are stored inside the workspace and protected by the same access control.
+- **Lineage keeps metadata only:** object names, columns, view definitions and dependencies, never rows. Snapshots live in the workspace folder behind the same access control.
 - **Synthetic data only** in development, tests and demos. Real client data never enters the repository.
 
 ## Web app
@@ -132,6 +146,7 @@ testbench validate [suite]         # check scenario files against the schema
 testbench list                     # list suites and scenarios
 testbench baseline <suite>         # capture or refresh baselines
 testbench run <suite> [--tag x]    # run checks, write an HTML report, exit 1 on failure
+testbench lineage <connection>     # map objects and dependencies, print what changed since last time
 ```
 
 The exit code makes it usable in CI or after a transport.
@@ -144,7 +159,7 @@ The exit code makes it usable in CI or after a transport.
 4. Skill that translates a business requirement into a scenario file. (done: `.claude/skills/write-scenario`)
 5. Datasphere and SuccessFactors connectors. (built and tested against simulated systems; still to verify on a real tenant)
 6. Create, edit and delete test scenarios in the app. (done)
-7. Lineage of the tenant's objects, with change detection between runs. (planned)
+7. Lineage of the tenant's objects, with change detection between runs. (database metadata done and tested against a simulated catalog; the Datasphere repository API is next)
 
 ## Open questions
 

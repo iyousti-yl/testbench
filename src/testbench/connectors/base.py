@@ -99,3 +99,7 @@ class Connector(Protocol):
     def query(self, sql: str, params: dict[str, Any] | None = None) -> Table: ...
 
     def close(self) -> None: ...
+
+    # Connectors with the "lineage" capability also implement:
+    #   lineage(scope: list[str] | None) -> tuple[LineageGraph, list[str]]
+    # returning the graph of objects and dependencies, and the scope that was read.

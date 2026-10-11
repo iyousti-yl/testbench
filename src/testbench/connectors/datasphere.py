@@ -30,6 +30,7 @@ from testbench.connectors.base import (
     SettingField,
     ensure_read_only,
 )
+from testbench.lineage import LineageEdge, LineageGraph, LineageObject
 from testbench.table import Table
 
 _LIST_OBJECTS = """
@@ -56,6 +57,7 @@ WHERE SCHEMA_NAME = ? AND TABLE_NAME = ? AND IS_PRIMARY_KEY = 'TRUE'
 HOST_SUFFIXES = (".hanacloud.ondemand.com",)
 _HOSTNAME = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$")
 _SPACE_ID = re.compile(r"^[A-Z0-9_]{1,64}$")
+_SCHEMA = re.compile(r"^[A-Z0-9_][A-Z0-9_#$]{0,126}$")  # spaces and Open SQL schemas
 
 
 def tenant_url(value: str) -> str:
@@ -81,6 +83,62 @@ def database_host(value: str) -> str:
     return host
 
 
+def parse_scope(value: str | list[str]) -> list[str]:
+    """Space IDs or schema names, from a list or a text separated by commas or spaces."""
+    names = value if isinstance(value, list) else re.split(r"[,\s]+", value or "")
+    scope = []
+    for name in (str(n).strip().upper() for n in names):
+        if not name or name in scope:
+            continue
+        if not _SCHEMA.match(name):
+            raise ConnectorError(f"'{name}' is not a space ID or schema name")
+        scope.append(name)
+    return scope
+
+
+# Lineage reads the catalog of the schemas in scope. The aliases keep the statements apart.
+_LINEAGE_VIEWS = """
+SELECT LINEAGE_VIEWS.SCHEMA_NAME, LINEAGE_VIEWS.VIEW_NAME, LINEAGE_VIEWS.DEFINITION,
+       LINEAGE_VIEWS.CREATE_TIME
+FROM SYS.VIEWS AS LINEAGE_VIEWS WHERE LINEAGE_VIEWS.SCHEMA_NAME IN ({schemas})
+"""
+_LINEAGE_TABLES = """
+SELECT LINEAGE_TABLES.SCHEMA_NAME, LINEAGE_TABLES.TABLE_NAME, LINEAGE_TABLES.TABLE_TYPE,
+       LINEAGE_TABLES.CREATE_TIME
+FROM SYS.TABLES AS LINEAGE_TABLES WHERE LINEAGE_TABLES.SCHEMA_NAME IN ({schemas})
+"""
+_LINEAGE_COLUMNS = """
+SELECT SCHEMA_NAME, VIEW_NAME AS OBJECT_NAME, COLUMN_NAME, DATA_TYPE_NAME, LENGTH, SCALE, POSITION
+FROM SYS.VIEW_COLUMNS AS LINEAGE_COLUMNS WHERE SCHEMA_NAME IN ({schemas})
+UNION ALL
+SELECT SCHEMA_NAME, TABLE_NAME, COLUMN_NAME, DATA_TYPE_NAME, LENGTH, SCALE, POSITION
+FROM SYS.TABLE_COLUMNS WHERE SCHEMA_NAME IN ({schemas})
+ORDER BY 1, 2, 7
+"""
+_LINEAGE_DEPENDENCIES = """
+SELECT BASE_SCHEMA_NAME, BASE_OBJECT_NAME, BASE_OBJECT_TYPE,
+       DEPENDENT_SCHEMA_NAME, DEPENDENT_OBJECT_NAME
+FROM SYS.OBJECT_DEPENDENCIES AS LINEAGE_DEPENDENCIES
+WHERE DEPENDENT_SCHEMA_NAME IN ({schemas}) AND DEPENDENCY_TYPE = 1
+"""
+
+
+def _text(value: Any) -> str:
+    """LOB columns (view definitions) come back as objects with ``read()``."""
+    if value is None:
+        return ""
+    if hasattr(value, "read"):
+        value = value.read()
+    return value.decode() if isinstance(value, bytes) else str(value)
+
+
+def _column(name: str, dtype: str, length: Any, scale: Any) -> str:
+    size = ""
+    if length not in (None, "") and dtype.upper() in {"NVARCHAR", "VARCHAR", "DECIMAL", "CHAR"}:
+        size = f"({length}" + (f",{scale}" if scale not in (None, "") else "") + ")"
+    return f"{name} {dtype}{size}"
+
+
 def _load_driver() -> Any:
     try:
         from hdbcli import dbapi
@@ -94,7 +152,7 @@ def _load_driver() -> Any:
 class DatasphereConnector:
     name = "datasphere"
     title = "SAP Datasphere"
-    capabilities = frozenset({"sql", "metadata"})
+    capabilities = frozenset({"sql", "metadata", "lineage"})
     settings_fields = (
         SettingField(
             "tenant_url",
@@ -133,6 +191,17 @@ class DatasphereConnector:
             secret=True,
             group="Database user",
         ),
+        SettingField(
+            "lineage_scope",
+            "Spaces or schemas to map",
+            help=(
+                "Leave empty to map this space. List more spaces or Open SQL schemas, separated"
+                " by commas, to map them together; other spaces need a database analysis user."
+            ),
+            placeholder="HR_INTEGRATION, FINANCE",
+            required=False,
+            group="Lineage",
+        ),
     )
 
     @staticmethod
@@ -143,12 +212,14 @@ class DatasphereConnector:
         user = settings.get("user", "").strip()
         if not user:
             raise ConnectorError("database user is required")
+        scope = parse_scope(settings.get("lineage_scope", ""))
         return {
             **settings,
             "tenant_url": tenant_url(settings.get("tenant_url", "")),
             "space": space,
             "host": database_host(settings.get("host", "")),
             "user": user,
+            "lineage_scope": ", ".join(scope),
         }
 
     def __init__(
@@ -162,6 +233,7 @@ class DatasphereConnector:
         validate_certificate: bool = True,
         timeout_seconds: int | str = 300,
         connect_timeout_seconds: int | str = 20,
+        lineage_scope: str | list[str] = "",
         **_: Any,
     ) -> None:
         if not host or not user or not password:
@@ -174,6 +246,7 @@ class DatasphereConnector:
         self.validate_certificate = validate_certificate
         self.timeout_ms = int(timeout_seconds) * 1000
         self.connect_timeout_ms = int(connect_timeout_seconds) * 1000
+        self.lineage_scope = parse_scope(lineage_scope)
         self._dbapi = _load_driver()
         self._conn: Any = None
 
@@ -253,6 +326,42 @@ class DatasphereConnector:
     def query(self, sql: str, params: dict[str, Any] | None = None) -> Table:
         ensure_read_only(sql)
         return self._execute(sql, params)
+
+    def lineage(self, scope: list[str] | None = None) -> tuple[LineageGraph, list[str]]:
+        """Views and tables of the schemas in scope (default: the ``lineage_scope`` setting,
+        else the space), with their columns, view definitions and which object reads which.
+        Objects outside the scope that are read appear as ``external``."""
+        chosen = scope or self.lineage_scope or [self._schema_for(None)]
+        schemas = sorted({s.strip() for s in chosen if s.strip()})
+        marks = ", ".join("?" for _ in schemas)
+        params = tuple(schemas)
+        graph = LineageGraph()
+        for schema, name, definition, created in self._execute(
+            _LINEAGE_VIEWS.format(schemas=marks), params
+        ).rows:
+            graph.add(
+                LineageObject(schema, name, "view", [], _text(definition), str(created or ""))
+            )
+        for schema, name, table_type, created in self._execute(
+            _LINEAGE_TABLES.format(schemas=marks), params
+        ).rows:
+            kind = "virtual table" if str(table_type or "").upper() == "VIRTUAL" else "table"
+            graph.add(LineageObject(schema, name, kind, [], "", str(created or "")))
+        columns = self._execute(_LINEAGE_COLUMNS.format(schemas=marks), params + params)
+        for schema, name, column, dtype, length, scale, _ in columns.rows:
+            obj = graph.objects.get(f"{schema}.{name}")
+            if obj is not None:
+                obj.columns.append(_column(column, str(dtype), length, scale))
+        dependencies = self._execute(_LINEAGE_DEPENDENCIES.format(schemas=marks), params)
+        edges = set()
+        for base_schema, base_name, base_type, schema, name in dependencies.rows:
+            source = f"{base_schema}.{base_name}"
+            if source not in graph.objects:
+                kind = "external" if base_schema not in schemas else str(base_type).lower()
+                graph.add(LineageObject(base_schema, base_name, kind))
+            edges.add(LineageEdge(source=source, target=f"{schema}.{name}"))
+        graph.edges = sorted(edges, key=lambda e: (e.target, e.source))
+        return graph, schemas
 
     def close(self) -> None:
         if self._conn is not None:

@@ -40,11 +40,18 @@
     {{ m.summary(view) }}
     {% if c.checked_at %}<p class="muted small">{{ c.check_message }} Checked {{ c.checked_at | when }}.</p>{% endif %}
     <p class="muted small">{{ "Personal data: baselines keep hashes only." if c.sensitive else "Baselines keep full values." }}{% if c.secret_keys %} Credentials stored encrypted.{% endif %}</p>
+    {% if view.lineage and last_lineage.get(c.name) %}<p class="muted small">Last lineage {{ last_lineage[c.name] | when }}: <a href="/w/{{ workspace.slug }}/lineage/{{ c.name }}">objects and changes</a></p>{% endif %}
     <div class="actions">
       <form method="post" action="/w/{{ workspace.slug }}/connections/{{ c.id }}/test">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <button class="secondary" type="submit">Test connection</button>
       </form>
+      {% if view.lineage %}
+      <form method="post" action="/w/{{ workspace.slug }}/connections/{{ c.id }}/lineage">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="secondary" type="submit">{{ "Update lineage" if last_lineage.get(c.name) else "Map lineage" }}</button>
+      </form>
+      {% endif %}
       {% if workspace.is_owner %}
       <a class="button secondary" href="/w/{{ workspace.slug }}/connections/{{ c.id }}">Edit</a>
       <a class="button danger" href="/w/{{ workspace.slug }}/connections/{{ c.id }}/delete">Delete</a>

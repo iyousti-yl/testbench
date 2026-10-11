@@ -23,7 +23,8 @@ After signing in:
 1. **Create a workspace** for a client or project. You can rename or delete it later; deleting removes its connections, scenarios, baselines and reports.
 2. **Add connections.** The app offers SAP Datasphere and SAP SuccessFactors. Each connection card shows where it points (Datasphere: tenant URL, space and database user; SuccessFactors: API server, company ID and user) and whether the last test succeeded. Passwords and keys are encrypted and never shown again.
 3. **Write test scenarios.** Each scenario has a title, the business requirement in plain words, a connection, optional "records to test" and one or more checks written in YAML. The app validates every save against the scenario format and keeps scenarios as files in the workspace, so the command line and the `write-scenario` skill work on the same files. Run a whole suite or a single scenario, capture baselines and read the report.
-4. Only workspace owners change the workspace and its connections; every member can write and run scenarios. Give a colleague access with `testbench web add-member <workspace-id> <email> [--role owner]`.
+4. **Map the lineage** of a Datasphere connection: every view and table in the space, its columns and definition, and which object reads which. Update it after a change and the app shows only what changed since the last lineage (added, changed or removed objects, column and definition differences), what sits downstream of each change and which scenarios to re-run.
+5. Only workspace owners change the workspace and its connections; every member can write and run scenarios. Give a colleague access with `testbench web add-member <workspace-id> <email> [--role owner]`.
 
 Keep `TESTBENCH_SECRET_KEY` safe and stable: it signs sessions and encrypts stored credentials. A hosted instance can run on Render's free plan: see [docs/deploy.md](docs/deploy.md).
 
@@ -32,6 +33,8 @@ Keep `TESTBENCH_SECRET_KEY` safe and stable: it signs sessions and encrypts stor
 ### SAP Datasphere
 
 In Datasphere, open Space Management > Database Access and create a database user for the space with read access (SQL). In the app you need the tenant URL, the space ID, and the database user's host name, user name and password. The app only connects to SAP HANA Cloud hosts (`*.hanacloud.ondemand.com`). Install the driver with `pip install -e ".[datasphere]"`.
+
+Lineage maps the connection's space by default. To map several spaces together, list them under "Spaces or schemas to map"; reading other spaces needs a database analysis user instead of a space user.
 
 ### SAP SuccessFactors
 
@@ -47,7 +50,7 @@ Authentication is OAuth 2.0 with a SAML bearer assertion (recommended): register
 
 ### On the command line
 
-The same connectors work from `testbench.yaml`, with secrets in environment variables. `testbench init` writes an empty project with commented templates for both; `testbench connections` tests them and `testbench objects <connection> --match EmpJob --columns` lists objects and columns.
+The same connectors work from `testbench.yaml`, with secrets in environment variables. `testbench init` writes an empty project with commented templates for both; `testbench connections` tests them, `testbench objects <connection> --match EmpJob --columns` lists objects and columns, and `testbench lineage <connection>` maps lineage and prints what changed since the last run.
 
 ## From business requirement to test
 
@@ -55,7 +58,7 @@ Describe what you want tested in plain language to Claude Code in this repositor
 
 ## Documentation
 
-- [Design note](docs/design.md): concepts, connector interface, scenario format, security.
+- [Design note](docs/design.md): concepts, connector interface, scenario format, lineage, security.
 - [Scenario schema](src/testbench/schema/scenario.schema.json): the fixed structure every scenario follows.
 
 ## Development

@@ -10,7 +10,12 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
-from testbench.connectors import ConnectorError, create_connector, form_connectors
+from testbench.connectors import (
+    ConnectorError,
+    connector_class,
+    create_connector,
+    form_connectors,
+)
 from testbench.connectors.base import SettingField
 from testbench.web.store import Connection
 
@@ -26,17 +31,30 @@ class ConnectionView:
     connection: Connection
     title: str
     summary: list[tuple[SettingField, str]]
+    capabilities: frozenset[str] = frozenset()
+
+    @property
+    def lineage(self) -> bool:
+        return "lineage" in self.capabilities
 
 
 def view(connection: Connection) -> ConnectionView:
-    cls = offered_types().get(connection.type)
+    try:
+        cls: type | None = connector_class(connection.type)
+    except ConnectorError:
+        cls = None
     fields = getattr(cls, "settings_fields", ()) if cls else ()
     summary = [
         (f, str(connection.settings[f.key]))
         for f in fields
         if f.summary and connection.settings.get(f.key)
     ]
-    return ConnectionView(connection, getattr(cls, "title", connection.type), summary)
+    return ConnectionView(
+        connection,
+        getattr(cls, "title", connection.type),
+        summary,
+        frozenset(getattr(cls, "capabilities", ())),
+    )
 
 
 def groups(cls: type) -> list[tuple[str, list[SettingField]]]:
