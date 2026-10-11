@@ -57,3 +57,8 @@ def test_scenario_without_matching_records_is_not_tested(demo_project: Path) -> 
         encoding="utf-8",
     )
     assert statuses(demo_project)["two-contracts-same-month"] == "skipped"
+
+
+def test_single_scenario_can_be_run(demo_project: Path) -> None:
+    assert main(["run", SUITE, "--scenario", "contract-data-quality"]) == 0
+    assert main(["run", SUITE, "--scenario", "does-not-exist"]) == 2

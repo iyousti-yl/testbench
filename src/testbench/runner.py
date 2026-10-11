@@ -123,7 +123,11 @@ class Runner:
         self._connections.clear()
 
     def run_suite(
-        self, suite_name: str, mode: str = "run", tags: list[str] | None = None
+        self,
+        suite_name: str,
+        mode: str = "run",
+        tags: list[str] | None = None,
+        scenarios: list[str] | None = None,
     ) -> RunResult:
         suite = load_suite(self.config.suites_dir / suite_name)
         result = RunResult(
@@ -132,6 +136,8 @@ class Runner:
         try:
             for scenario in suite.scenarios:
                 if tags and not set(tags) & set(scenario.tags):
+                    continue
+                if scenarios and scenario.id not in scenarios:
                     continue
                 result.scenarios.append(self.run_scenario(suite, scenario, mode))
         finally:

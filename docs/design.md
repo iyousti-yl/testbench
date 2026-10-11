@@ -43,7 +43,7 @@ class Connector(Protocol):
 
 A scenario is a fixed structure defined by a JSON Schema: [`src/testbench/schema/scenario.schema.json`](../src/testbench/schema/scenario.schema.json). Files can be written as JSON or YAML (same structure). The engine only executes this structure; it never interprets free text.
 
-The intended flow is: a consultant writes the **requirement** in business language, a skill (later an in-app assistant) translates it into the structure using the real column names of the views involved, and a person reviews the generated queries before the scenario is used. The requirement is kept verbatim in the file so every report shows it next to its result.
+The intended flow is: a consultant writes the **requirement** in business language, the `write-scenario` skill (`.claude/skills/write-scenario/SKILL.md`, later an in-app assistant) translates it into the structure using the real column names of the views involved, and a person reviews the generated queries before the scenario is used. The requirement is kept verbatim in the file so every report shows it next to its result.
 
 ```yaml
 version: 1
@@ -135,7 +135,7 @@ The exit code makes it usable in CI or after a transport.
 1. Core engine, scenario schema, SQLite connector, HTML report, synthetic HR demo suite. (done)
 2. Web app with login and workspaces: browse suites, run them, read reports. (done)
 3. NMBS demo workspace on synthetic SuccessFactors data, reachable only after login. (first version: `testbench web seed-demo`)
-4. Skill that translates a business requirement into a scenario file.
+4. Skill that translates a business requirement into a scenario file. (done: `.claude/skills/write-scenario`)
 5. Datasphere connector, tested against a trial tenant.
 
 ## Open questions
