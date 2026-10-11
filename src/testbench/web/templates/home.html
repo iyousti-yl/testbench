@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Your workspaces</h1>
+{% if workspaces %}
+<div class="grid">
+  {% for w in workspaces %}
+  <a class="card tile-link" href="/w/{{ w.slug }}">
+    <strong>{{ w.name }}</strong>
+    <span class="muted">{{ w.role }}{% if w.is_demo %} · demo data{% endif %}</span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted">You are not a member of any workspace yet. Ask a workspace owner to add you.</p>
+{% endif %}
+{% endblock %}

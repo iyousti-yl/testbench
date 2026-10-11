@@ -103,6 +103,18 @@ Data security is a top priority: clients will connect HR and finance data. The r
 - **Hash-mode baselines.** For connections marked `sensitive: true`, baselines store one hash per row and totals per numeric column, so regressions are detected without keeping personal data. Reports of failing checks do show sample rows (up to 20), because a report must show what broke; they are stored inside the workspace and protected by the same access control.
 - **Synthetic data only** in development, tests and demos. Real client data never enters the repository.
 
+## Web app
+
+A FastAPI app with server-rendered pages and no JavaScript (`testbench web serve`).
+
+- **Data layout:** `TESTBENCH_DATA_DIR/app.db` holds users, workspaces, memberships and encrypted secrets. Each workspace has its own folder (`workspaces/<id>/`) with the same layout as a CLI project, so the engine runs unchanged.
+- **Access control:** every workspace route resolves the workspace with a query that joins the signed-in user's memberships. A workspace the user is not a member of answers 404, exactly like one that does not exist.
+- **Sessions:** signed, HTTP-only, SameSite=Lax cookies, valid 8 hours; a new session on every login; CSRF tokens on every form; 5 failed logins lock an email address for 15 minutes.
+- **Passwords:** scrypt hashes; at least 12 characters.
+- **Connection secrets:** encrypted with a key derived from `TESTBENCH_SECRET_KEY`, passed to the runner only at run time, never rendered.
+- **Headers:** a strict Content-Security-Policy (no scripts at all), no framing, `nosniff`, `no-store` caching. Reports are served with their own CSP and shown in a sandboxed frame.
+- **Accounts** are created by an administrator on the command line for now. Self-service invitations and single sign-on (Microsoft Entra ID or SAP Cloud Identity) come later.
+
 ## Command line
 
 ```
@@ -121,8 +133,8 @@ The exit code makes it usable in CI or after a transport.
 ## Milestones
 
 1. Core engine, scenario schema, SQLite connector, HTML report, synthetic HR demo suite. (done)
-2. Web app with login and workspaces: browse suites, run them, read reports.
-3. NMBS demo workspace on synthetic SuccessFactors data, reachable only after login.
+2. Web app with login and workspaces: browse suites, run them, read reports. (done)
+3. NMBS demo workspace on synthetic SuccessFactors data, reachable only after login. (first version: `testbench web seed-demo`)
 4. Skill that translates a business requirement into a scenario file.
 5. Datasphere connector, tested against a trial tenant.
 

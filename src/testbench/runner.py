@@ -98,15 +98,20 @@ def _now() -> str:
 
 
 class Runner:
-    def __init__(self, config: ProjectConfig) -> None:
+    def __init__(
+        self, config: ProjectConfig, secrets: dict[str, dict[str, str]] | None = None
+    ) -> None:
+        """``secrets`` maps connection name to settings (such as a password) kept outside
+        ``testbench.yaml``; the web app passes the decrypted values here."""
         self.config = config
+        self.secrets = secrets or {}
         self.baselines = BaselineStore(config.output_dir)
         self._connections: dict[str, Connector] = {}
 
     def connection(self, name: str) -> Connector:
         if name not in self._connections:
             cfg = self.config.connection(name)
-            settings = expand_env(cfg.settings)
+            settings = {**expand_env(cfg.settings), **self.secrets.get(name, {})}
             self._connections[name] = create_connector(
                 cfg.type, {**settings, "base_dir": self.config.root}
             )
@@ -228,7 +233,7 @@ class Runner:
 
 
 def save_run(result: RunResult, output_dir: Path) -> Path:
-    stamp = result.started_at.replace(":", "").replace("-", "").replace("+0000", "Z")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     run_dir = output_dir / "runs" / f"{stamp}-{result.suite}-{result.mode}"
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "results.json").write_text(

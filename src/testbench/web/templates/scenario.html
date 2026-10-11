@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ scenario.name }} · Testbench{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a> / {{ suite }}</nav>
+<h1>{{ scenario.name }}</h1>
+{% if scenario.requirement %}
+<section class="card">
+  <h2>Business requirement</h2>
+  <p class="requirement">{{ scenario.requirement }}</p>
+</section>
+{% endif %}
+<section class="card">
+  <h2>Test logic</h2>
+  <p class="muted">Connection: {{ scenario.connection }} · {{ scenario.checks | length }} checks{% if scenario.select %} · runs on the records that match the selection{% endif %}</p>
+  <pre>{{ source }}</pre>
+</section>
+{% endblock %}
