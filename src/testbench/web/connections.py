@@ -37,6 +37,11 @@ class ConnectionView:
     def lineage(self) -> bool:
         return "lineage" in self.capabilities
 
+    @property
+    def icon(self) -> str:
+        """Database for SQL systems, cloud for APIs."""
+        return "database" if "sql" in self.capabilities else "cloud"
+
 
 def view(connection: Connection) -> ConnectionView:
     try:

@@ -1,16 +1,19 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% set base = "/w/" ~ workspace.slug %}
+{% set here = base ~ "/suites/" ~ suite ~ "/scenarios/" ~ scenario.id %}
 {% block title %}Delete {{ scenario.name }} · Testbench{% endblock %}
+{% block crumbs %}{{ m.crumbs([(workspace.name, base), (scenario.name, here), ("Delete", "")]) }}{% endblock %}
+{% block page_class %} narrow{% endblock %}
 {% block content %}
-<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a> / <a href="/w/{{ workspace.slug }}/suites/{{ suite }}/scenarios/{{ scenario.id }}">{{ scenario.name }}</a></nav>
-<section class="card form-card">
-  <h1>Delete scenario {{ scenario.name }}?</h1>
-  {% if scenario.requirement %}<p class="requirement">{{ scenario.requirement }}</p>{% endif %}
-  <p>Its baselines are deleted too. Reports of earlier runs stay available.</p>
-  <form method="post" action="/w/{{ workspace.slug }}/suites/{{ suite }}/scenarios/{{ scenario.id }}/delete">
+<div class="page-head"><div><h1>Delete {{ scenario.name }}?</h1>{% if scenario.requirement %}<p class="subtitle">{{ scenario.requirement }}</p>{% endif %}</div></div>
+<section class="panel danger-zone">
+  <form class="form panel-body" method="post" action="{{ here }}/delete">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <div class="actions">
-      <button class="danger" type="submit">Delete scenario</button>
-      <a class="button secondary" href="/w/{{ workspace.slug }}/suites/{{ suite }}/scenarios/{{ scenario.id }}">Cancel</a>
+    <p>Its baselines are deleted too. Reports of earlier runs stay available.</p>
+    <div class="form-actions">
+      <button class="btn danger" type="submit">{{ icon("trash") }}Delete scenario</button>
+      <a class="btn ghost" href="{{ here }}">Cancel</a>
     </div>
   </form>
 </section>

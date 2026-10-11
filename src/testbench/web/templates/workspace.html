@@ -1,126 +1,187 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
+{% set nav = "workspace" %}
 {% block title %}{{ workspace.name }} · Testbench{% endblock %}
-{% block content %}
-<nav class="crumbs"><a href="/">Workspaces</a> / {{ workspace.name }}</nav>
-<div class="row">
-  <div>
-    <h1>{{ workspace.name }}</h1>
-    {% if workspace.description %}<p class="muted lead">{{ workspace.description }}</p>{% endif %}
-  </div>
-  {% if workspace.is_owner %}
-  <div class="actions">
-    <a class="button secondary" href="/w/{{ workspace.slug }}/edit">Edit</a>
-    <a class="button danger" href="/w/{{ workspace.slug }}/delete">Delete</a>
-  </div>
-  {% endif %}
-</div>
-{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+{% set base = "/w/" ~ workspace.slug %}
 
-<section class="card">
-  <div class="row">
-    <h2>Connections</h2>
-    {% if workspace.is_owner %}
-    <div class="actions">
-      {% for type_name, cls in connector_types.items() %}
-      <a class="button secondary" href="/w/{{ workspace.slug }}/connections/new/{{ type_name }}">Add {{ cls.title }}</a>
+{% macro add_connection(primary=False) %}
+<details class="menu">
+  <summary class="btn{{ ' primary' if primary else ' sm' }}">{{ icon("plus") }}Add connection</summary>
+  <div class="menu-pop">
+    {% for type_name, cls in connector_types.items() %}
+    <a class="menu-item" href="{{ base }}/connections/new/{{ type_name }}">{{ icon("database" if "sql" in cls.capabilities else "cloud") }}<span>Add {{ cls.title }}{% if cls.description %}<small>{{ cls.description }}</small>{% endif %}</span></a>
+    {% endfor %}
+  </div>
+</details>
+{% endmacro %}
+
+{% macro counts_text(counts) -%}
+{% set parts = [] -%}
+{% for key, label in [("passed", "passed"), ("failed", "failed"), ("error", "error"), ("skipped", "not tested")] -%}
+{% if counts.get(key) %}{{ parts.append(counts[key] ~ " " ~ (label ~ "s" if key == "error" and counts[key] > 1 else label)) or "" }}{% endif -%}
+{% endfor -%}
+{{ parts | join(", ") or "No scenarios" }}
+{%- endmacro %}
+
+{% block content %}
+{% set every = statuses.values() | sum(start=[]) %}
+{% set failing = every | select("in", ["failed", "error"]) | list | length %}
+{% set last_run = runs | selectattr("mode", "equalto", "run") | first %}
+{% set reachable = connections | selectattr("connection.check_ok") | list | length %}
+<header class="object-head">
+  <div class="object-title">
+    <h1>{{ workspace.name }}</h1>
+    {% if workspace.description %}<p class="subtitle">{{ workspace.description }}</p>{% endif %}
+  </div>
+  {% if scenario_count or connections %}
+  <dl class="figures">
+    <div><dt>Scenarios</dt><dd>{{ scenario_count }}</dd></div>
+    <div><dt>Failing</dt><dd>{% if failing %}<span class="negative">{{ failing }}</span>{% elif has_run %}None{% else %}Not run yet{% endif %}</dd></div>
+    <div><dt>Last test run</dt><dd>{{ last_run.started_at | when if last_run else "None yet" }}</dd></div>
+    <div><dt>Connections</dt><dd>{{ reachable }} of {{ connections | length }} connected</dd></div>
+  </dl>
+  {% endif %}
+</header>
+{% if error %}{{ m.msg("error", error) }}{% endif %}
+
+{% if not has_run %}
+{% set step = 1 if not connections else 2 if not scenario_count else 3 %}
+<section class="onboarding" aria-labelledby="start-title">
+  <h2 id="start-title">Get started</h2>
+  <ol class="route">
+    <li class="{{ 'done' if step > 1 else 'current' }}">
+      <span class="stop" aria-hidden="true"></span>
+      <div><div class="step-title">{% if step > 1 %}<span class="sr-only">Done: </span>{% endif %}Connect a system</div><div class="step-sub">SAP Datasphere or SAP SuccessFactors, with a user that can only read.</div></div>
+      {% if step == 1 %}{% if workspace.is_owner %}{{ add_connection(primary=True) }}{% else %}<span class="small muted">Ask an owner of this workspace to add one.</span>{% endif %}{% endif %}
+    </li>
+    <li class="{{ 'done' if step > 2 else 'current' if step == 2 }}">
+      <span class="stop" aria-hidden="true"></span>
+      <div><div class="step-title">{% if step > 2 %}<span class="sr-only">Done: </span>{% endif %}Write a test scenario</div><div class="step-sub">A business requirement in plain words, and the checks that prove it.</div></div>
+      {% if step == 2 %}<a class="btn primary" href="{{ base }}/scenarios/new">{{ icon("plus") }}New scenario</a>{% endif %}
+    </li>
+    <li class="{{ 'current' if step == 3 }}">
+      <span class="stop" aria-hidden="true"></span>
+      <div><div class="step-title">Run the tests</div><div class="step-sub">Capture a baseline on a known-good state, then run after every change.</div></div>
+    </li>
+  </ol>
+</section>
+{% endif %}
+
+{% if connections or suites %}
+<div class="layout">
+  <div class="stack">
+    <section id="scenarios" aria-labelledby="scenarios-title">
+      <div class="section-head">
+        <h2 id="scenarios-title">Scenarios <span class="count">({{ scenario_count }})</span></h2>
+        {% if has_run or scenario_count %}<a class="btn primary" href="{{ base }}/scenarios/new">{{ icon("plus") }}New scenario</a>{% endif %}
+      </div>
+      {% for suite in suites %}
+      {% set results = statuses[suite.name] %}
+      <section class="line" aria-label="Suite {{ suite.name }}">
+        <div class="line-head">
+          <h3 class="line-badge">{{ suite.name }}</h3>
+          <span class="line-meta">{{ m.health_text(results) }}</span>
+          <div class="btn-row">
+            <form class="inline" method="post" action="{{ base }}/suites/{{ suite.name }}/run">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="mode" value="run">
+              <button class="btn sm" type="submit">{{ icon("play") }}Run tests</button>
+            </form>
+            <details class="menu">
+              <summary class="btn sm ghost icon-only" title="More for {{ suite.name }}">{{ icon("more", "More actions for " ~ suite.name) }}</summary>
+              <div class="menu-pop">
+                <a class="menu-item" href="{{ base }}/scenarios/new?suite={{ suite.name }}">{{ icon("plus") }}<span>Add scenario<small>A new scenario in this suite</small></span></a>
+                <form method="post" action="{{ base }}/suites/{{ suite.name }}/run">
+                  <input type="hidden" name="csrf" value="{{ csrf }}">
+                  <input type="hidden" name="mode" value="baseline">
+                  <button class="menu-item" type="submit">{{ icon("baseline") }}<span>Capture baseline<small>Store today's results as the expected state for regression checks</small></span></button>
+                </form>
+              </div>
+            </details>
+          </div>
+        </div>
+        {% if suite.description %}<p class="line-desc">{{ suite.description }}</p>{% endif %}
+        <ol class="stations">
+          {% for s in suite.scenarios %}
+          {% set tone, glyph, label = result(results[loop.index0]) %}
+          <li class="station">
+            <a class="row-link" href="{{ base }}/suites/{{ suite.name }}/scenarios/{{ s.id }}">
+              <span class="stop {{ glyph }}" aria-hidden="true"></span>
+              <span class="row-text">
+                <span class="title">{{ s.name }}</span>
+                {% if s.requirement %}<span class="sub clamp-1">{{ s.requirement }}</span>{% endif %}
+              </span>
+              <span class="status {{ tone }}">{{ label }}</span>
+              {{ icon("chevron-right", cls="chev") }}
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </section>
+      {% else %}
+      <p class="empty-inline">Scenarios you write appear here, grouped in test suites, with the latest result of each.</p>
       {% endfor %}
-    </div>
+    </section>
+
+    {% if runs %}
+    <section id="runs" aria-labelledby="runs-title">
+      <div class="section-head"><h2 id="runs-title">Test runs</h2></div>
+      <div class="scroll-x">
+        <table class="table">
+          <thead><tr><th>Started</th><th>Suite</th><th class="hide-sm">Type</th><th>Result</th><th class="hide-sm">Scenarios</th></tr></thead>
+          <tbody>
+          {% for r in runs %}
+          <tr>
+            <td class="nowrap"><a class="cell-link" href="{{ base }}/runs/{{ r.id }}">{{ r.started_at | when }}</a></td>
+            <td>{{ r.suite }}</td>
+            <td class="hide-sm">{{ "Baseline" if r.mode == "baseline" else "Test run" }}</td>
+            <td>{{ m.status(r.status) }}</td>
+            <td class="hide-sm muted">{{ counts_text(r.counts) }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
     {% endif %}
   </div>
-  {% for view in connections %}
-  {% set c = view.connection %}
-  <article class="connection">
-    <div class="row">
-      <div>
-        <h3>{{ c.name }} <span class="muted type">{{ view.title }}</span></h3>
-      </div>
-      {{ m.status(c) }}
-    </div>
-    {{ m.summary(view) }}
-    {% if c.checked_at %}<p class="muted small">{{ c.check_message }} Checked {{ c.checked_at | when }}.</p>{% endif %}
-    <p class="muted small">{{ "Personal data: baselines keep hashes only." if c.sensitive else "Baselines keep full values." }}{% if c.secret_keys %} Credentials stored encrypted.{% endif %}</p>
-    {% if view.lineage and last_lineage.get(c.name) %}<p class="muted small">Last lineage {{ last_lineage[c.name] | when }}: <a href="/w/{{ workspace.slug }}/lineage/{{ c.name }}">objects and changes</a></p>{% endif %}
-    <div class="actions">
-      <form method="post" action="/w/{{ workspace.slug }}/connections/{{ c.id }}/test">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <button class="secondary" type="submit">Test connection</button>
-      </form>
-      {% if view.lineage %}
-      <form method="post" action="/w/{{ workspace.slug }}/connections/{{ c.id }}/lineage">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <button class="secondary" type="submit">{{ "Update lineage" if last_lineage.get(c.name) else "Map lineage" }}</button>
-      </form>
-      {% endif %}
-      {% if workspace.is_owner %}
-      <a class="button secondary" href="/w/{{ workspace.slug }}/connections/{{ c.id }}">Edit</a>
-      <a class="button danger" href="/w/{{ workspace.slug }}/connections/{{ c.id }}/delete">Delete</a>
-      {% endif %}
-    </div>
-  </article>
-  {% else %}
-  <p class="muted">No connections yet.{% if workspace.is_owner %} Add one to read data from {{ connector_types.values() | map(attribute="title") | join(" or ") }}.{% endif %}</p>
-  {% endfor %}
-</section>
 
-<section class="card">
-  <div class="row">
-    <h2>Test suites</h2>
-    <a class="button secondary" href="/w/{{ workspace.slug }}/scenarios/new">New scenario</a>
-  </div>
-  {% for suite in suites %}
-  <div class="suite">
-    <div class="row">
-      <div>
-        <h3>{{ suite.name }}</h3>
-        {% if suite.description %}<p class="muted">{{ suite.description }}</p>{% endif %}
-      </div>
-      <div class="actions">
-        <a class="button secondary" href="/w/{{ workspace.slug }}/scenarios/new?suite={{ suite.name }}">Add scenario</a>
-        <form method="post" action="/w/{{ workspace.slug }}/suites/{{ suite.name }}/run">
-          <input type="hidden" name="csrf" value="{{ csrf }}">
-          <input type="hidden" name="mode" value="baseline">
-          <button class="secondary" type="submit">Capture baseline</button>
-        </form>
-        <form method="post" action="/w/{{ workspace.slug }}/suites/{{ suite.name }}/run">
-          <input type="hidden" name="csrf" value="{{ csrf }}">
-          <input type="hidden" name="mode" value="run">
-          <button type="submit">Run tests</button>
-        </form>
-      </div>
+  {% if connections %}
+  <aside id="connections" class="side" aria-labelledby="connections-title">
+    <div class="section-head">
+      <h2 id="connections-title">Connections <span class="count">({{ connections | length }})</span></h2>
+      {% if workspace.is_owner %}{{ add_connection() }}{% endif %}
     </div>
-    <ul class="scenarios">
-      {% for s in suite.scenarios %}
-      <li>
-        <a href="/w/{{ workspace.slug }}/suites/{{ suite.name }}/scenarios/{{ s.id }}">{{ s.name }}</a>
-        {% if s.requirement %}<p class="muted">{{ s.requirement }}</p>{% endif %}
-        {% for t in s.tags %}<span class="tag">{{ t }}</span>{% endfor %}
-      </li>
-      {% endfor %}
-    </ul>
-  </div>
-  {% else %}
-  <p class="muted">No test scenarios in this workspace yet.{% if connections %} Write the first one from a business requirement.{% else %} Add a connection first, then write scenarios against it.{% endif %}</p>
-  {% endfor %}
-</section>
-
-{% if runs %}
-<section class="card">
-  <h2>Recent runs</h2>
-  <table>
-    <thead><tr><th>Started</th><th>Suite</th><th>Type</th><th>Result</th><th>Passed</th><th>Failed</th><th>Error</th><th>Not tested</th></tr></thead>
-    <tbody>
-    {% for r in runs %}
-    <tr>
-      <td><a href="/w/{{ workspace.slug }}/runs/{{ r.id }}">{{ r.started_at | when }}</a></td>
-      <td>{{ r.suite }}</td>
-      <td>{{ "Baseline" if r.mode == "baseline" else "Test run" }}</td>
-      <td><span class="badge {{ r.status }}">{{ status_label[r.status] }}</span></td>
-      <td>{{ r.counts.passed }}</td><td>{{ r.counts.failed }}</td><td>{{ r.counts.error }}</td><td>{{ r.counts.skipped }}</td>
-    </tr>
+    {% for view in connections %}
+    {% set c = view.connection %}
+    <article class="conn" aria-label="Connection {{ c.name }}">
+      <div class="conn-head">
+        <div>
+          <div class="conn-name">{{ icon(view.icon) }}{% if workspace.is_owner %}<a href="{{ base }}/connections/{{ c.id }}" title="Edit {{ c.name }}">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}</div>
+          <div class="conn-type">{{ view.title }}</div>
+        </div>
+        {{ m.conn_status(c) }}
+      </div>
+      {{ m.facts(view) }}
+      {% if c.checked_at %}<p class="conn-note">{{ c.check_message }} Checked {{ c.checked_at | when }}.</p>{% endif %}
+      {% if c.sensitive %}<p class="conn-note with-icon">{{ icon("lock") }}Personal data: baselines keep hashes only.</p>{% endif %}
+      {% if view.lineage and last_lineage.get(c.name) %}<p class="conn-note with-icon">{{ icon("lineage") }}<span>Lineage mapped {{ last_lineage[c.name] | when }}. <a href="{{ base }}/lineage/{{ c.name }}">See objects and changes</a></span></p>{% endif %}
+      <div class="btn-row">
+        <form class="inline" method="post" action="{{ base }}/connections/{{ c.id }}/test">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn sm ghost" type="submit">{{ icon("pulse") }}Test connection</button>
+        </form>
+        {% if view.lineage %}
+        <form class="inline" method="post" action="{{ base }}/connections/{{ c.id }}/lineage">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn sm ghost" type="submit">{{ icon("lineage") }}{{ "Update lineage" if last_lineage.get(c.name) else "Map lineage" }}</button>
+        </form>
+        {% endif %}
+      </div>
+    </article>
     {% endfor %}
-    </tbody>
-  </table>
-</section>
+  </aside>
+  {% endif %}
+</div>
 {% endif %}
 {% endblock %}

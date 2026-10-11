@@ -1,18 +1,19 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
+{% set base = "/w/" ~ workspace.slug %}
 {% block title %}Delete {{ view.connection.name }} · Testbench{% endblock %}
+{% block crumbs %}{{ m.crumbs([(workspace.name, base), (view.connection.name, base ~ "/connections/" ~ view.connection.id), ("Delete", "")]) }}{% endblock %}
+{% block page_class %} narrow{% endblock %}
 {% block content %}
-<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a></nav>
-<section class="card form-card">
-  <h1>Delete connection {{ view.connection.name }}?</h1>
-  <p class="muted">{{ view.title }}</p>
-  {{ m.summary(view) }}
-  <p>Its stored credentials are deleted. Scenarios that use <code>{{ view.connection.name }}</code> will stop running until you add a connection with that name again.</p>
-  <form method="post" action="/w/{{ workspace.slug }}/connections/{{ view.connection.id }}/delete">
+<div class="page-head"><div><h1>Delete {{ view.connection.name }}?</h1><p class="subtitle">{{ view.title }}</p></div></div>
+<section class="panel danger-zone">
+  <form class="form panel-body" method="post" action="{{ base }}/connections/{{ view.connection.id }}/delete">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <div class="actions">
-      <button class="danger" type="submit">Delete connection</button>
-      <a class="button secondary" href="/w/{{ workspace.slug }}">Cancel</a>
+    {{ m.facts(view) }}
+    <p>Its stored credentials are deleted. Scenarios that use <code>{{ view.connection.name }}</code> stop running until a connection with that name exists again.</p>
+    <div class="form-actions">
+      <button class="btn danger" type="submit">{{ icon("trash") }}Delete connection</button>
+      <a class="btn ghost" href="{{ base }}">Cancel</a>
     </div>
   </form>
 </section>

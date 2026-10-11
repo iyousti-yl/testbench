@@ -152,6 +152,7 @@ def _load_driver() -> Any:
 class DatasphereConnector:
     name = "datasphere"
     title = "SAP Datasphere"
+    description = "Views and tables of a space, read over SQL"
     capabilities = frozenset({"sql", "metadata", "lineage"})
     settings_fields = (
         SettingField(

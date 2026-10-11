@@ -20,9 +20,9 @@ testbench web serve --insecure-cookies     # http://127.0.0.1:8000 (plain HTTP: 
 
 After signing in:
 
-1. **Create a workspace** for a client or project. You can rename or delete it later; deleting removes its connections, scenarios, baselines and reports.
-2. **Add connections.** The app offers SAP Datasphere and SAP SuccessFactors. Each connection card shows where it points (Datasphere: tenant URL, space and database user; SuccessFactors: API server, company ID and user) and whether the last test succeeded. Passwords and keys are encrypted and never shown again.
-3. **Write test scenarios.** Each scenario has a title, the business requirement in plain words, a connection, optional "records to test" and one or more checks written in YAML. The app validates every save against the scenario format and keeps scenarios as files in the workspace, so the command line and the `write-scenario` skill work on the same files. Run a whole suite or a single scenario, capture baselines and read the report.
+1. **Create a workspace** for a client or project. Rename or delete it under **Settings**; deleting removes its connections, scenarios, baselines and reports. Until the first test run, the workspace shows the three steps to get started.
+2. **Add connections.** The app offers SAP Datasphere and SAP SuccessFactors. Each connection card shows where it points (Datasphere: tenant URL, space and database user; SuccessFactors: API server, company ID and user) and whether the last test succeeded. Passwords and keys are encrypted and never shown again. Edit or delete a connection from its edit page.
+3. **Write test scenarios.** Each scenario has a title, the business requirement in plain words, a connection, optional "records to test" and one or more checks written in YAML. The app validates every save against the scenario format and keeps scenarios as files in the workspace, so the command line and the `write-scenario` skill work on the same files. Run a whole suite or a single scenario, capture baselines and read the report. Every scenario shows its latest result: each suite is drawn as a line with one stop per scenario.
 4. **Map the lineage** of a Datasphere connection: every view and table in the space, its columns and definition, and which object reads which. Update it after a change and the app shows only what changed since the last lineage (added, changed or removed objects, column and definition differences), what sits downstream of each change and which scenarios to re-run.
 5. Only workspace owners change the workspace and its connections; every member can write and run scenarios. Give a colleague access with `testbench web add-member <workspace-id> <email> [--role owner]`.
 
@@ -60,6 +60,7 @@ Describe what you want tested in plain language to Claude Code in this repositor
 
 - [Design note](docs/design.md): concepts, connector interface, scenario format, lineage, security.
 - [Scenario schema](src/testbench/schema/scenario.schema.json): the fixed structure every scenario follows.
+- [DESIGN.md](DESIGN.md) and [PRODUCT.md](PRODUCT.md): the app's visual system and who it is for.
 
 ## Development
 

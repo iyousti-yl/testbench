@@ -1,48 +1,80 @@
 {% extends "base.html" %}
-{% block title %}{{ cls.title }} connection · Testbench{% endblock %}
+{% import "_macros.html" as m %}
+{% set base = "/w/" ~ workspace.slug %}
+{% block title %}{{ connection.name if connection else "New " ~ cls.title ~ " connection" }} · Testbench{% endblock %}
+{% block crumbs %}{{ m.crumbs([(workspace.name, base), (connection.name if connection else "New connection", "")]) }}{% endblock %}
+{% block page_class %} narrow{% endblock %}
 {% block content %}
-<nav class="crumbs"><a href="/">Workspaces</a> / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a></nav>
-<section class="card form-card">
-  <h1>{{ "Edit" if connection else "Connect to" }} {{ cls.title }}</h1>
-  {% if cls.description %}<p class="muted">{{ cls.description }}</p>{% endif %}
-  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
-  <form method="post" action="/w/{{ workspace.slug }}/connections/{{ connection.id if connection else 'new/' ~ type_name }}" class="stack" autocomplete="off">
+<div class="page-head">
+  <div>
+    <h1>{{ "Edit " ~ connection.name if connection else "Connect to " ~ cls.title }}</h1>
+    <p class="subtitle">{{ cls.title }}{% if cls.description %} · {{ cls.description }}{% endif %}</p>
+  </div>
+</div>
+{% if error %}{{ m.msg("error", error) }}{% endif %}
+<section class="panel">
+  <form class="form panel-body" method="post" action="{{ base }}/connections/{{ connection.id if connection else 'new/' ~ type_name }}" autocomplete="off">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Connection name
-      <input name="name" value="{{ values.name or '' }}" maxlength="40" required>
-      <span class="hint">Scenarios refer to the connection by this name, for example {{ type_name }}-dev.</span>
-    </label>
+    {% set name_field %}
+      <div class="field">
+        <label for="c-name">Connection name</label>
+        <input id="c-name" name="name" value="{{ values.name or '' }}" maxlength="40" required spellcheck="false">
+        <span class="help">Scenarios use this name, for example {{ type_name }}-dev.</span>
+      </div>
+    {% endset %}
+    {% if groups[0][0] %}<div class="form-section">{{ name_field }}</div>{% endif %}
     {% for group, fields in groups %}
-    {% if group %}<fieldset><legend>{{ group }}</legend>{% endif %}
+    <div class="form-section"{% if group %} role="group" aria-labelledby="group-{{ loop.index }}"{% endif %}>
+      {% if group %}<h2 id="group-{{ loop.index }}">{{ group }}</h2>{% elif loop.first %}{{ name_field }}{% endif %}
       {% for f in fields %}
       {% set input_name = prefix ~ f.key %}
+      {% set input_id = "f-" ~ f.key %}
       {% set stored = connection and f.secret and f.key in connection.secret_keys %}
-      <label>{{ f.label }}{% if not f.required and not f.secret and not group %} <span class="hint">Optional</span>{% endif %}
+      <div class="field">
+        <label for="{{ input_id }}">{{ f.label }}{% if not f.required and not f.secret %} <span class="optional">(optional)</span>{% endif %}</label>
         {% if f.kind == "choice" %}
-        <select name="{{ input_name }}">
+        <select id="{{ input_id }}" name="{{ input_name }}">
           {% for value, label in f.choices %}<option value="{{ value }}"{% if values.get(input_name) == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
         {% elif f.kind == "textarea" %}
-        <textarea name="{{ input_name }}" rows="5" spellcheck="false" placeholder="{{ 'Stored and encrypted. Leave empty to keep it.' if stored else f.placeholder }}">{{ '' if f.secret else values.get(input_name, '') }}</textarea>
+        <textarea id="{{ input_id }}" class="code" name="{{ input_name }}" rows="5" spellcheck="false" placeholder="{{ 'Stored and encrypted. Leave empty to keep it.' if stored else f.placeholder }}">{{ '' if f.secret else values.get(input_name, '') }}</textarea>
         {% elif f.secret %}
-        <input type="password" name="{{ input_name }}" autocomplete="new-password" placeholder="{{ 'Stored and encrypted. Leave empty to keep it.' if stored else f.placeholder }}"{% if f.required and not stored %} required{% endif %}>
+        <input id="{{ input_id }}" type="password" name="{{ input_name }}" autocomplete="new-password" placeholder="{{ 'Stored and encrypted. Leave empty to keep it.' if stored else f.placeholder }}"{% if f.required and not stored %} required{% endif %}>
         {% else %}
-        <input type="{{ 'url' if f.kind == 'url' else 'text' }}" name="{{ input_name }}" value="{{ values.get(input_name, '') }}" placeholder="{{ f.placeholder }}"{% if f.required %} required{% endif %}>
+        <input id="{{ input_id }}" type="{{ 'url' if f.kind == 'url' else 'text' }}" name="{{ input_name }}" value="{{ values.get(input_name, '') }}" placeholder="{{ f.placeholder }}" spellcheck="false"{% if f.required %} required{% endif %}>
         {% endif %}
-        {% if f.help %}<span class="hint">{{ f.help }}</span>{% endif %}
-      </label>
+        {% if f.help %}<span class="help">{{ f.help }}</span>{% endif %}
+      </div>
       {% endfor %}
-    {% if group %}</fieldset>{% endif %}
+    </div>
     {% endfor %}
-    <label class="check">
-      <input type="checkbox" name="sensitive"{% if values.get("sensitive") == "on" %} checked{% endif %}>
-      <span>Contains personal data <span class="hint">Baselines keep only hashes and totals, never values.</span></span>
-    </label>
-    <p class="muted small">Passwords and keys are encrypted and never shown again. Testbench only reads: give the user read-only permissions.</p>
-    <div class="actions">
-      <button type="submit">Save and test</button>
-      <a class="button secondary" href="/w/{{ workspace.slug }}">Cancel</a>
+    <div class="form-section">
+      <label class="checkbox">
+        <input type="checkbox" name="sensitive"{% if values.get("sensitive") == "on" %} checked{% endif %}>
+        <span><strong>Contains personal data</strong><span>Baselines keep only hashes and totals, never the values.</span></span>
+      </label>
+      <p class="form-note">{{ icon("lock") }}<span>Passwords and keys are encrypted and never shown again. Testbench only reads, so give this user read-only access.</span></p>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" type="submit">{{ icon("pulse") }}Save and test</button>
+      <a class="btn ghost" href="{{ base }}">Cancel</a>
     </div>
   </form>
 </section>
+
+{% if connection %}
+<section class="panel danger-zone" aria-labelledby="danger-title">
+  <div class="panel-body">
+    <h2 id="danger-title">Delete this connection</h2>
+    <p>Its stored credentials are deleted. Scenarios that use <code>{{ connection.name }}</code> stop running until a connection with that name exists again.</p>
+    <details class="disclosure">
+      <summary>{{ icon("chevron-right") }}Delete connection…</summary>
+      <form class="disclosure-body" method="post" action="{{ base }}/connections/{{ connection.id }}/delete">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn danger" type="submit">{{ icon("trash") }}Delete {{ connection.name }}</button>
+      </form>
+    </details>
+  </div>
+</section>
+{% endif %}
 {% endblock %}

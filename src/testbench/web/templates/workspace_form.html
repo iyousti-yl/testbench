@@ -1,23 +1,53 @@
 {% extends "base.html" %}
-{% block title %}{{ "Edit " ~ workspace.name if workspace else "New workspace" }} · Testbench{% endblock %}
+{% import "_macros.html" as m %}
+{% set nav = "settings" if workspace else "" %}
+{% block title %}{{ "Settings · " ~ workspace.name if workspace else "New workspace" }} · Testbench{% endblock %}
+{% block crumbs %}{% if workspace %}{{ m.crumbs([(workspace.name, "/w/" ~ workspace.slug), ("Settings", "")]) }}{% else %}{{ m.crumbs([("New workspace", "")]) }}{% endif %}{% endblock %}
+{% block page_class %} narrow{% endblock %}
 {% block content %}
-<nav class="crumbs"><a href="/">Workspaces</a>{% if workspace %} / <a href="/w/{{ workspace.slug }}">{{ workspace.name }}</a>{% endif %}</nav>
-<section class="card form-card">
-  <h1>{{ "Edit workspace" if workspace else "New workspace" }}</h1>
-  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
-  <form method="post" action="{{ '/w/' ~ workspace.slug ~ '/edit' if workspace else '/workspaces' }}" class="stack">
+<div class="page-head">
+  <div>
+    <h1>{{ "Settings" if workspace else "New workspace" }}</h1>
+    {% if not workspace %}<p class="subtitle">One workspace per client or project. It holds the connections, scenarios and results, and only its members can open it.</p>{% endif %}
+  </div>
+</div>
+{% if error %}{{ m.msg("error", error) }}{% endif %}
+<section class="panel">
+  <form class="form panel-body" method="post" action="{{ '/w/' ~ workspace.slug ~ '/edit' if workspace else '/workspaces' }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Name
-      <input name="name" value="{{ values.name or '' }}" maxlength="80" required autofocus placeholder="NMBS · HR integration">
-    </label>
-    <label>Description <span class="hint">Optional</span>
-      <textarea name="description" rows="3" maxlength="500" placeholder="What is tested here, for which client or project">{{ values.description or '' }}</textarea>
-    </label>
-    {% if workspace %}<p class="muted small">Workspace ID in links: {{ workspace.slug }} (does not change when you rename).</p>{% endif %}
-    <div class="actions">
-      <button type="submit">{{ "Save" if workspace else "Create workspace" }}</button>
-      <a class="button secondary" href="{{ '/w/' ~ workspace.slug if workspace else '/' }}">Cancel</a>
+    <div class="field">
+      <label for="ws-name">Name</label>
+      <input id="ws-name" name="name" value="{{ values.name or '' }}" maxlength="80" required{% if not workspace %} autofocus{% endif %} placeholder="Client · HR integration">
+      {% if workspace %}<span class="help">Links keep using <code>{{ workspace.slug }}</code> after a rename.</span>{% endif %}
+    </div>
+    <div class="field">
+      <label for="ws-description">Description <span class="optional">(optional)</span></label>
+      <textarea id="ws-description" name="description" rows="3" maxlength="500" placeholder="What is tested here, for which client or project">{{ values.description or '' }}</textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" type="submit">{{ "Save changes" if workspace else "Create workspace" }}</button>
+      <a class="btn ghost" href="{{ '/w/' ~ workspace.slug if workspace else '/' }}">Cancel</a>
     </div>
   </form>
 </section>
+
+{% if workspace %}
+<section class="panel danger-zone" aria-labelledby="danger-title">
+  <div class="panel-body">
+    <h2 id="danger-title">Delete this workspace</h2>
+    <p>Removes it for every member, with its connections and stored credentials, scenarios, baselines and run reports. This cannot be undone.</p>
+    <details class="disclosure">
+      <summary>{{ icon("chevron-right") }}Delete workspace…</summary>
+      <form class="form disclosure-body" method="post" action="/w/{{ workspace.slug }}/delete">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="field">
+          <label for="ws-confirm">Type <code>{{ workspace.slug }}</code> to confirm</label>
+          <input id="ws-confirm" name="confirm" autocomplete="off" spellcheck="false" required>
+        </div>
+        <div class="form-actions"><button class="btn danger" type="submit">{{ icon("trash") }}Delete workspace</button></div>
+      </form>
+    </details>
+  </div>
+</section>
+{% endif %}
 {% endblock %}

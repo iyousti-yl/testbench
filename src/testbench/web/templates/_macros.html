@@ -1,14 +1,58 @@
-{% macro status(c) -%}
-{% if c.check_ok is none %}<span class="badge skipped">Not tested</span>
-{% elif c.check_ok %}<span class="badge passed">Connected</span>
-{% else %}<span class="badge failed">Cannot connect</span>{% endif %}
+{# Shared building blocks. Status is always an icon and a word, never colour alone. #}
+
+{% macro status(value, large=False) -%}
+{% set tone, glyph, label = result(value) -%}
+<span class="status {{ tone }}{{ ' large' if large }}">{{ icon(glyph) }}{{ label }}</span>
 {%- endmacro %}
 
-{% macro summary(view) -%}
-<dl class="summary">
+{% macro conn_status(c) -%}
+{% if c.check_ok is none %}<span class="status none">{{ icon("not-run") }}Not tested</span>
+{%- elif c.check_ok %}<span class="status positive">{{ icon("passed") }}Connected</span>
+{%- else %}<span class="status negative">{{ icon("failed") }}Cannot connect</span>{% endif %}
+{%- endmacro %}
+
+{% macro track(statuses, label) -%}
+<div class="track" role="img" aria-label="{{ label }}">
+  {%- for s in statuses %}<span class="stop {{ s or 'not-run' }}"></span>{% endfor -%}
+</div>
+{%- endmacro %}
+
+{% macro health_text(statuses, count=True) -%}
+{% set failing = statuses | select("in", ["failed", "error"]) | list | length -%}
+{% set unrun = statuses | select("none") | list | length -%}
+{% set parts = [] -%}
+{% if count %}{{ parts.append(statuses | length ~ (" scenario" if statuses | length == 1 else " scenarios")) or "" }}{% endif -%}
+{% if failing %}{{ parts.append(failing ~ " failing") or "" }}{% elif unrun == statuses | length %}{{ parts.append("not run yet") or "" }}{% elif not unrun %}{{ parts.append("all passing") or "" }}{% endif -%}
+{{ parts | join(" · ") }}
+{%- endmacro %}
+
+{% macro facts(view) -%}
+<dl class="facts">
   {% for field, value in view.summary %}
   <dt>{{ field.label }}</dt>
   <dd>{% if field.kind == "url" %}<a href="{{ value }}" target="_blank" rel="noopener noreferrer">{{ value }}</a>{% else %}{{ value }}{% endif %}</dd>
   {% endfor %}
 </dl>
+{%- endmacro %}
+
+{% macro msg(kind, body) -%}
+<div class="msg {{ kind }}" role="{{ 'alert' if kind == 'error' else 'status' }}">
+  {{ icon("failed" if kind == "error" else "info") }}
+  <div class="msg-body">{{ body }}</div>
+</div>
+{%- endmacro %}
+
+{% macro crumbs(items) -%}
+<a href="/">Workspaces</a>
+{%- for label, href in items %}
+<span class="sep" aria-hidden="true">/</span>
+{%- if loop.last %}<span aria-current="page">{{ label }}</span>{% else %}<a href="{{ href }}">{{ label }}</a>{% endif %}
+{%- endfor %}
+{%- endmacro %}
+
+{% macro msg_block(kind) -%}
+<div class="msg {{ kind }}" role="{{ 'alert' if kind == 'error' else 'status' }}">
+  {{ icon("failed" if kind == "error" else "info") }}
+  <div class="msg-body">{{ caller() }}</div>
+</div>
 {%- endmacro %}

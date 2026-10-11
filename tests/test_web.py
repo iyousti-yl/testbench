@@ -80,6 +80,11 @@ def test_create_rename_and_delete_a_workspace(alice: TestClient, app) -> None:
     post(alice, "/w/nmbs-payroll/edit", {"name": "NMBS · Payroll 2027", "description": ""})
     page = alice.get("/w/nmbs-payroll").text
     assert "NMBS · Payroll 2027" in page and "Pilot" not in page
+    assert "Get started" in page  # until the first test run
+    assert 'href="/w/nmbs-payroll#connections"' in page  # the side rail lists its sections
+    settings = alice.get("/w/nmbs-payroll/edit").text  # rename and delete live together
+    assert 'action="/w/nmbs-payroll/delete"' in settings and 'name="confirm"' in settings
+    assert 'href="/w/nmbs-payroll/edit" aria-current="page"' in settings
 
     (folder / ".testbench").mkdir()
     response = post(alice, "/w/nmbs-payroll/delete", {"confirm": "wrong"})
@@ -336,6 +341,19 @@ def test_run_flow_with_report(alice: TestClient, app, tmp_path: Path) -> None:
     report = alice.get(run_url + "/report")
     assert report.status_code == 200
     assert "default-src 'none'" in report.headers["content-security-policy"]
+    assert "<header>" in report.text and "body>header{display:none}" not in report.text
+    embedded = alice.get(run_url + "/report?embed=1")  # the run page shows title and status
+    assert "body>header{display:none}" in embedded.text
+    assert "default-src 'none'" in embedded.headers["content-security-policy"]
+
+    # The latest test run (not the baseline) gives each scenario its status.
+    ws = WorkspaceFiles(store, workspace)
+    latest = ws.latest_results()
+    assert {status for status, _ in latest.values()} == {"passed"}
+    assert all(run_id.endswith("-run") for _, run_id in latest.values())
+    page = alice.get("/w/client-a-hr").text
+    assert '<span class="status positive">Passed</span>' in page and "all passing" in page
+    assert "4 scenarios · all passing" in alice.get("/").text
 
 
 @pytest.mark.parametrize("run_id", ["..", "..%2F..%2Fapp.db", "x", "20260101T00Z-contracts-run"])
@@ -434,3 +452,17 @@ def test_lineage_is_only_offered_where_the_connector_has_it(alice: TestClient, a
     )
     assert "Map lineage" not in alice.get("/w/client-a-hr").text
     assert post(alice, f"/w/client-a-hr/connections/{sf.id}/lineage").status_code == 404
+
+
+def test_status_helpers() -> None:
+    from testbench.web.app import initials
+    from testbench.web.scenarios import describe_expectation
+
+    assert initials("Issam Yousti") == "IY" and initials("alice") == "A" and initials("") == "?"
+    assert describe_expectation("row_count", 0) == "no rows"
+    assert describe_expectation("row_count", {"min": 1}) == "at least 1 row"
+    rule = describe_expectation("all_rows", "fte > 0 and name <> '<b>'")
+    assert "<b>" not in rule and "&lt;b&gt;" in rule  # rules are escaped, shown as code
+    assert describe_expectation("regression", {"keys": ["contract_id"]}).endswith(
+        "by <code>contract_id</code>"
+    )

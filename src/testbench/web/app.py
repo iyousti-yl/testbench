@@ -29,7 +29,13 @@ from testbench.connectors import ConnectorError
 from testbench.lineage import snapshot_time
 from testbench.scenario import ScenarioError, list_suites
 from testbench.web import connections as conn_forms
-from testbench.web.scenarios import ScenarioFiles, ScenarioForm, build_document
+from testbench.web.icons import icon, logo
+from testbench.web.scenarios import (
+    ScenarioFiles,
+    ScenarioForm,
+    build_document,
+    describe_expectation,
+)
 from testbench.web.security import SecretBox, csrf_matches, new_csrf_token
 from testbench.web.store import Connection, Store, StoreError, User, Workspace
 from testbench.web.workspaces import NotFound, WorkspaceFiles, workspace_lock
@@ -38,6 +44,15 @@ SESSION_HOURS = 8
 MAX_LOGIN_FAILURES = 5
 LOCKOUT_SECONDS = 15 * 60
 STATUS_LABELS = {PASSED: "Passed", FAILED: "Failed", ERROR: "Error", SKIPPED: "Not tested"}
+# How a result is shown: tone (colour), icon and label. Always icon and text, never colour alone.
+RESULTS = {
+    PASSED: ("positive", "passed", "Passed"),
+    FAILED: ("negative", "failed", "Failed"),
+    ERROR: ("critical", "error", "Error"),
+    SKIPPED: ("neutral", "skipped", "Not tested"),
+}
+NOT_RUN = ("none", "not-run", "Not run yet")
+RECENT_RUNS = 8
 
 _APP_CSP = (
     "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'none'; "
@@ -46,6 +61,7 @@ _APP_CSP = (
 # Reports are self-contained HTML with inline styles and no scripts; they are framed by
 # the run page and may never load anything else.
 _REPORT_CSP = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'"
+_EMBEDDED_REPORT = "body>header{display:none}main{max-width:none;padding:2px 2px 24px}"
 
 
 class LoginThrottle:
@@ -93,6 +109,11 @@ def create_app(
     package = files("testbench.web")
     templates = Jinja2Templates(directory=str(package / "templates"))
     templates.env.globals["status_label"] = STATUS_LABELS
+    templates.env.globals["result"] = lambda status: RESULTS.get(status, NOT_RUN)
+    templates.env.globals["icon"] = icon
+    templates.env.globals["logo"] = logo
+    templates.env.globals["describe"] = describe_expectation
+    templates.env.filters["initials"] = initials
     templates.env.filters["when"] = format_time
     templates.env.filters["snapshot_when"] = lambda value: format_time(snapshot_time(value), True)
 
@@ -185,6 +206,13 @@ def create_app(
             raise HTTPException(status_code=404)
         return cls
 
+    def health(ws: WorkspaceFiles) -> tuple[list[Any], dict[tuple[str, str], tuple[str, str]]]:
+        """Suites and the latest result of each scenario; broken files show no suites."""
+        try:
+            return ws.suites(), ws.latest_results()
+        except (ConfigError, ScenarioError):
+            return [], {}
+
     def workspace_connection(workspace: Workspace, connection_id: int) -> Connection:
         connection = store.connection(workspace, connection_id)
         if connection is None:
@@ -254,11 +282,16 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request, user: CurrentUser) -> HTMLResponse:
-        workspaces = [
-            (w, [conn_forms.view(c) for c in store.connections(w)])
-            for w in store.workspaces_for(user)
-        ]
-        return render(request, "home.html", user=user, workspaces=workspaces)
+        tiles = []
+        for w in store.workspaces_for(user):
+            suites, latest = health(WorkspaceFiles(store, w))
+            statuses = [
+                latest.get((suite.name, s.id), (None,))[0]
+                for suite in suites
+                for s in suite.scenarios
+            ]
+            tiles.append((w, [conn_forms.view(c) for c in store.connections(w)], statuses))
+        return render(request, "home.html", user=user, tiles=tiles)
 
     # Workspaces ----------------------------------------------------------------
 
@@ -299,6 +332,12 @@ def create_app(
             suites = ws.suites()
         except (ConfigError, ScenarioError) as exc:
             suites, error = [], str(exc)
+        runs = ws.runs()
+        latest = ws.latest_results()
+        statuses = {
+            suite.name: [latest.get((suite.name, s.id), (None,))[0] for s in suite.scenarios]
+            for suite in suites
+        }
         return render(
             request,
             "workspace.html",
@@ -312,7 +351,10 @@ def create_app(
                 if (ids := ws.lineage_store().ids(c.name))
             },
             suites=suites,
-            runs=ws.runs(),
+            statuses=statuses,
+            scenario_count=sum(len(v) for v in statuses.values()),
+            runs=runs[:RECENT_RUNS],
+            has_run=any(r.mode == "run" for r in runs),
             error=error,
         )
 
@@ -619,11 +661,16 @@ def create_app(
         )
 
     @app.get("/w/{slug}/runs/{run_id}/report", response_class=HTMLResponse)
-    def run_report(user: CurrentUser, workspace: MemberWorkspace, run_id: str) -> HTMLResponse:
+    def run_report(
+        user: CurrentUser, workspace: MemberWorkspace, run_id: str, embed: bool = False
+    ) -> HTMLResponse:
         try:
-            return HTMLResponse(WorkspaceFiles(store, workspace).report_html(run_id))
+            report = WorkspaceFiles(store, workspace).report_html(run_id)
         except NotFound as exc:
             raise HTTPException(status_code=404) from exc
+        if embed:  # inside the run page, which already shows the title, status and time
+            report = report.replace("</head>", f"<style>{_EMBEDDED_REPORT}</style></head>", 1)
+        return HTMLResponse(report)
 
     @app.get("/w/{slug}/suites/{suite}/scenarios/{scenario_id}", response_class=HTMLResponse)
     def scenario_page(
@@ -633,10 +680,12 @@ def create_app(
         suite: str,
         scenario_id: str,
     ) -> HTMLResponse:
+        ws = WorkspaceFiles(store, workspace)
         try:
-            scenario, source = WorkspaceFiles(store, workspace).scenario(suite, scenario_id)
+            scenario, source = ws.scenario(suite, scenario_id)
         except NotFound as exc:
             raise HTTPException(status_code=404) from exc
+        status, run_id = ws.latest_results().get((suite, scenario_id), (None, None))
         return render(
             request,
             "scenario.html",
@@ -645,6 +694,9 @@ def create_app(
             suite=suite,
             scenario=scenario,
             source=source,
+            status=status,
+            run_id=run_id,
+            has_regression=any("regression" in c.expect for c in scenario.checks),
         )
 
     # Scenario editor -----------------------------------------------------------
@@ -785,6 +837,14 @@ def create_app(
         return RedirectResponse(f"/w/{workspace.slug}", status_code=303)
 
     return app
+
+
+def initials(name: str) -> str:
+    """Up to two initials for the avatar in the shell bar."""
+    parts = [p for p in name.replace(".", " ").split() if p[:1].isalnum()]
+    if not parts:
+        return "?"
+    return (parts[0][0] + (parts[-1][0] if len(parts) > 1 else "")).upper()
 
 
 def format_time(value: str, seconds: bool = False) -> str:

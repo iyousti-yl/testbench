@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -83,35 +84,57 @@ def _details(details: dict[str, Any]) -> str:
 
 
 _CSS = """
-:root{--bg:#f5f6f7;--card:#fff;--text:#1d2d3e;--muted:#556b82;--border:#d9d9d9;
---brand:#0070f2;--ok:#256f3a;--ok-bg:#f5fae5;--bad:#aa0808;--bad-bg:#ffeaf4;
---warn:#e76500;--warn-bg:#fff8d6;--skip:#5b738b;--skip-bg:#eff1f2}
-@media (prefers-color-scheme:dark){:root{--bg:#12171c;--card:#1d232a;--text:#eaecee;
---muted:#a9b4be;--border:#3a434c;--brand:#4db1ff;--ok:#6dd58c;--ok-bg:#1d3324;
---bad:#ff8888;--bad-bg:#3d1c22;--warn:#ffab4d;--warn-bg:#3b2d16;--skip:#a9b4be;--skip-bg:#2a3138}}
+:root{color-scheme:light;--bg:#fff;--card:#fff;--sunk:#eef6f8;--text:#122228;--muted:#4c626b;
+--border:#dbe3e6;--track:#19323b;--ok:#21763c;--ok-bg:#e4fbe7;--bad:#be2323;--bad-bg:#ffedec;
+--warn:#a75000;--warn-bg:#fff3d8;--skip:#54676e;--skip-bg:#e9f0f2;--stop-passed:#25984d;
+--stop-failed:#d42325;--stop-error:#e78c08;--stop-skipped:#7c8d93}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#0f1619;--card:#121b1e;
+--sunk:#162024;--text:#e6ecef;--muted:#a1b5bd;--border:#28353a;--track:#b1c1c7;--ok:#6fd087;
+--ok-bg:#1a3520;--bad:#fb817f;--bad-bg:#4a2322;--warn:#eeb154;--warn-bg:#402c12;--skip:#a1b5bd;
+--skip-bg:#263033;--stop-passed:#4ac06c;--stop-failed:#f4514f;--stop-error:#f7ac4d;
+--stop-skipped:#65747a}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);
-font:14px/1.5 "72","Segoe UI",system-ui,sans-serif}
-header{background:var(--card);border-bottom:1px solid var(--border);padding:16px 24px}
-header h1{margin:0;font-size:20px}header p{margin:4px 0 0;color:var(--muted)}
-main{max-width:1100px;margin:0 auto;padding:24px 16px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
-.tile{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px}
-.tile b{display:block;font-size:28px;background:none}.tile span{color:var(--muted)}
-details{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:12px}
-summary{cursor:pointer;padding:12px 16px;display:flex;gap:12px;align-items:center;list-style:none}
-summary::-webkit-details-marker{display:none}
-.body{padding:0 16px 16px}.muted{color:var(--muted)}
-.badge{border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;white-space:nowrap}
+font:15px/1.5 "Libre Franklin","Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+header{padding:20px 24px 4px;max-width:1100px;margin:0 auto}
+header h1{margin:0;font-size:22px;line-height:1.25}header p{margin:4px 0 0;color:var(--muted)}
+main{max-width:1100px;margin:0 auto;padding:12px 24px 32px}
+.track{position:relative;display:flex;justify-content:space-between;align-items:center;gap:2px;
+height:16px;max-width:320px;margin:12px 0 0}
+.track::before{content:"";position:absolute;left:0;right:0;top:7px;height:2px;background:var(--track)}
+.stop{position:relative;flex:0 1 10px;min-width:4px;height:10px;border-radius:50%;
+box-shadow:0 0 0 2px var(--bg)}
+.stop.passed{background:var(--stop-passed)}.stop.skipped{background:var(--stop-skipped)}
+.stop.failed{background:var(--stop-failed);border-radius:2px;transform:rotate(45deg) scale(.86)}
+.stop.error{background:var(--stop-error);border-radius:2px;transform:scale(.86)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px}
+.tile{background:var(--card);border-radius:6px;padding:12px 16px;border:1px solid var(--border)}
+.tile b{display:block;font-size:24px;line-height:1.2;background:none}
+.tile span{color:var(--muted);font-size:14px}
+details{background:var(--card);border-radius:6px;margin-bottom:12px;border:1px solid var(--border)}
+summary{cursor:pointer;padding:12px 20px;display:flex;gap:12px;align-items:center;list-style:none}
+summary::-webkit-details-marker{display:none}summary:hover{background:var(--sunk);border-radius:6px}
+.body{padding:0 20px 16px}.muted{color:var(--muted)}
+.badge{border-radius:3px;padding:1px 8px;font-size:13px;font-weight:600;white-space:nowrap}
+b.passed,b.failed,b.error,b.skipped{background:none}
 .passed{color:var(--ok);background:var(--ok-bg)}.failed{color:var(--bad);background:var(--bad-bg)}
 .error{color:var(--warn);background:var(--warn-bg)}.skipped{color:var(--skip);background:var(--skip-bg)}
-.req{border-left:3px solid var(--brand);padding:4px 12px;margin:8px 0}
+p.error{background:none;color:var(--bad)}
+.req{background:var(--sunk);border-radius:6px;padding:8px 12px;margin:4px 0 8px;font-size:16px}
 .check{border-top:1px solid var(--border);padding-top:8px;margin-top:8px}
-.check h4{margin:4px 0;display:flex;gap:8px;align-items:center;font-size:14px}
-h5{margin:12px 0 4px;font-size:13px}.scroll{overflow-x:auto}
+.check h4{margin:4px 0;display:flex;gap:8px;align-items:center;font-size:15px}
+h5{margin:12px 0 4px;font-size:14px}.scroll{overflow-x:auto}
 table{border-collapse:collapse;font-size:13px;min-width:50%}
-th,td{border:1px solid var(--border);padding:4px 8px;text-align:left}th{background:var(--bg)}
-ul{margin:4px 0;padding-left:20px}
+th,td{border-bottom:1px solid var(--border);padding:6px 10px;text-align:left}
+th{color:var(--muted);font-weight:600;border-bottom:2px solid var(--track)}
+ul{margin:4px 0;padding-left:20px}li{margin:2px 0}
 """
+
+
+def _when(value: str) -> str:
+    try:
+        return datetime.fromisoformat(value).strftime("%d %b %Y, %H:%M UTC")
+    except (TypeError, ValueError):
+        return _e(value)
 
 
 def html_report(result: RunResult) -> str:
@@ -120,6 +143,8 @@ def html_report(result: RunResult) -> str:
         f"<div class='tile'><b class='{k}'>{v}</b><span>{_LABELS[k]}</span></div>"
         for k, v in counts.items()
     )
+    kind = "Baseline" if result.mode == "baseline" else "Test run"
+    track = "".join(f"<span class='stop {s.status}'></span>" for s in result.scenarios)
     sections = []
     for s in result.scenarios:
         checks_html = []
@@ -154,8 +179,9 @@ def html_report(result: RunResult) -> str:
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{_e(result.suite)} test report</title><style>{_CSS}</style></head><body>"
         f"<header><h1>{_e(result.project)} · {_e(result.suite)}</h1>"
-        f"<p>{_LABELS.get(result.status, result.status)} · started {_e(result.started_at)}"
-        f" · finished {_e(result.finished_at)}</p></header>"
+        f"<p>{kind} · {_LABELS.get(result.status, result.status)} · {_when(result.started_at)}</p>"
+        f"<div class='track' role='img' aria-label='Result of each scenario'>{track}</div>"
+        "</header>"
         f"<main><div class='tiles'>{tiles}</div>{''.join(sections)}</main></body></html>"
     )
 

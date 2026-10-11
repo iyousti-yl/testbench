@@ -130,6 +130,25 @@ class WorkspaceFiles:
             )
         return summaries
 
+    def latest_results(self, limit: int = 200) -> dict[tuple[str, str], tuple[str, str]]:
+        """(suite, scenario id) -> (status, run id) from the newest test run that ran it.
+
+        Baseline captures are not test results, so only test runs count."""
+        runs_dir = self.config().output_dir / "runs"
+        if not runs_dir.is_dir():
+            return {}
+        latest: dict[tuple[str, str], tuple[str, str]] = {}
+        for path in sorted(runs_dir.iterdir(), reverse=True)[:limit]:
+            results = path / "results.json"
+            if not RUN_ID.match(path.name) or not path.name.endswith("-run"):
+                continue
+            if not results.is_file():
+                continue
+            data = json.loads(results.read_text(encoding="utf-8"))
+            for scenario in data.get("scenarios", []):
+                latest.setdefault((data["suite"], scenario["id"]), (scenario["status"], path.name))
+        return latest
+
     # Lineage -------------------------------------------------------------------
 
     def lineage_store(self) -> LineageStore:

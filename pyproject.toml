@@ -35,7 +35,7 @@ successfactors = "testbench.connectors.successfactors:SuccessFactorsConnector"
 where = ["src"]
 
 [tool.setuptools.package-data]
-testbench = ["schema/*.json", "web/templates/*", "web/static/*"]
+testbench = ["schema/*.json", "web/templates/*", "web/static/*", "web/static/fonts/*"]
 
 [tool.ruff]
 line-length = 100
